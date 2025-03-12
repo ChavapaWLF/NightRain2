@@ -1,6 +1,6 @@
-// main.cpp - 主程序入口
+// main.cpp - Main program entry
 
-// !!!重要!!! SDL.h必须是第一个包含的头文件，以便正确定义WinMain
+// !!!IMPORTANT!!! SDL.h must be the first included header for proper WinMain definition
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_mixer.h>
 
@@ -17,59 +17,61 @@
 #ifdef _WIN32
 #include <windows.h>
 
-// 设置控制台代码页为 UTF-8 或 GBK
+// Set console code page to UTF-8 or GBK
 void setConsoleCodePage() {
-    // 使用 UTF-8 代码页 (65001)
+    // Use UTF-8 code page (65001)
     SetConsoleOutputCP(65001);
-    // 或使用简体中文 GBK 代码页 (936)
+    // Or use Simplified Chinese GBK code page (936)
     // SetConsoleOutputCP(936);
 }
 #else
 void setConsoleCodePage() {
-    // 非Windows系统不需要设置
+    // No need to set for non-Windows systems
 }
 #endif
 
-// 添加自定义filesystem兼容层
+// Add custom filesystem compatibility layer
 #include "filesystem_compat.h"
 
-// 纹理加载
+// Texture loading
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb/stb_image.h"
 
-// 图像写入
+// Image writing
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb/stb_image_write.h"
 
-// 确保使用SDL的main
+// Ensure using SDL's main
 #define SDL_MAIN_HANDLED
 
-// OpenGL相关库
+// OpenGL related libraries
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
-// ImGui库（用于UI）
+// ImGui library (for UI)
 #include "imgui/imgui.h"
 #include "imgui/backends/imgui_impl_glfw.h"
 #include "imgui/backends/imgui_impl_opengl3.h"
 
-// 常量定义
+void writeShaderFiles();
+
+// Constants
 const unsigned int SCR_WIDTH = 1280;
 const unsigned int SCR_HEIGHT = 720;
 const float POND_SIZE = 100.0f;
 const float WATER_HEIGHT = 0.0f;
 
-// 定义一些额外的常量，以便在没有纹理的情况下生成更好的视觉效果
-const int STARS_COUNT = 300;      // 夜空中的星星数量
-const int CLOUD_COUNT = 5;        // 云朵数量
-const float MOON_SIZE = 20.0f;    // 月亮大小
-const float MOON_X = 70.0f;       // 月亮X坐标
-const float MOON_Y = 60.0f;       // 月亮Y坐标
+// Additional constants for better visuals without textures
+const int STARS_COUNT = 300;      // Number of stars in night sky
+const int CLOUD_COUNT = 5;        // Number of clouds
+const float MOON_SIZE = 20.0f;    // Moon size
+const float MOON_X = 70.0f;       // Moon X coordinate
+const float MOON_Y = 60.0f;       // Moon Y coordinate
 
-// 星星结构
+// Star structure
 struct Star {
     glm::vec3 position;
     float brightness;
@@ -77,7 +79,7 @@ struct Star {
     float size;
 };
 
-// 云朵结构
+// Cloud structure
 struct Cloud {
     glm::vec3 position;
     float size;
@@ -85,13 +87,13 @@ struct Cloud {
     float speed;
 };
 
-// 着色器类
+// Shader class
 class Shader {
 public:
     unsigned int ID;
 
     Shader(const char* vertexPath, const char* fragmentPath) {
-        // 1. 从文件读取顶点和片段着色器源码
+        // 1. Read vertex and fragment shader source from files
         std::string vertexCode;
         std::string fragmentCode;
         std::ifstream vShaderFile;
@@ -117,46 +119,75 @@ public:
         }
         catch(std::ifstream::failure& e) {
             std::cout << "ERROR::SHADER::FILE_NOT_SUCCESSFULLY_READ: " << e.what() << std::endl;
+            
+            // Try looking for files in the project root if build directory fails
+            try {
+                // Try looking one directory up
+                std::string projectRootVertPath = std::string("../") + vertexPath;
+                std::string projectRootFragPath = std::string("../") + fragmentPath;
+                
+                vShaderFile.open(projectRootVertPath);
+                fShaderFile.open(projectRootFragPath);
+                
+                std::stringstream vShaderStream, fShaderStream;
+                
+                vShaderStream << vShaderFile.rdbuf();
+                fShaderStream << fShaderFile.rdbuf();
+                
+                vShaderFile.close();
+                fShaderFile.close();
+                
+                vertexCode = vShaderStream.str();
+                fragmentCode = fShaderStream.str();
+                
+                std::cout << "Successfully loaded shaders from project root directory" << std::endl;
+            }
+            catch(std::ifstream::failure& e2) {
+                std::cerr << "ERROR: Failed to read shader files from both build and project directory" << std::endl;
+                
+                // If we can't load the file, use hardcoded shaders
+                // This will be handled in writeShaderFiles() function
+            }
         }
         
         const char* vShaderCode = vertexCode.c_str();
         const char* fShaderCode = fragmentCode.c_str();
         
-        // 2. 编译着色器
+        // 2. Compile shaders
         unsigned int vertex, fragment;
         int success;
         char infoLog[512];
         
-        // 顶点着色器
+        // Vertex shader
         vertex = glCreateShader(GL_VERTEX_SHADER);
         glShaderSource(vertex, 1, &vShaderCode, NULL);
         glCompileShader(vertex);
         checkCompileErrors(vertex, "VERTEX");
         
-        // 片段着色器
+        // Fragment shader
         fragment = glCreateShader(GL_FRAGMENT_SHADER);
         glShaderSource(fragment, 1, &fShaderCode, NULL);
         glCompileShader(fragment);
         checkCompileErrors(fragment, "FRAGMENT");
         
-        // 着色器程序
+        // Shader program
         ID = glCreateProgram();
         glAttachShader(ID, vertex);
         glAttachShader(ID, fragment);
         glLinkProgram(ID);
         checkCompileErrors(ID, "PROGRAM");
         
-        // 删除着色器，它们已链接到我们的程序中，不再需要
+        // Delete shaders - they're linked to our program and no longer needed
         glDeleteShader(vertex);
         glDeleteShader(fragment);
     }
 
-    // 激活着色器
+    // Activate shader
     void use() {
         glUseProgram(ID);
     }
 
-    // uniform工具函数
+    // Uniform utility functions
     void setBool(const std::string &name, bool value) const {
         glUniform1i(glGetUniformLocation(ID, name.c_str()), (int)value);
     }
@@ -206,10 +237,10 @@ private:
     }
 };
 
-// 应用类前置声明
+// Forward declaration for application class
 class RainSimulation;
 
-// 雨滴类
+// Raindrop class
 class Raindrop {
 public:
     glm::vec3 position;
@@ -219,11 +250,11 @@ public:
     float lifespan;
     float lifetime;
     bool visible;
-    int state; // 0: 下落, 1: 入水, 2: 消失
-    RainSimulation* simulation; // 指向主应用的指针，用于调用声音函数
-    float brightness; // 亮度变化
-    float twinkleSpeed; // 闪烁速度
-    float trail; // 雨滴轨迹长度
+    int state; // 0: falling, 1: entered water, 2: disappeared
+    RainSimulation* simulation; // Pointer to main app for sound functions
+    float brightness; // Brightness variation
+    float twinkleSpeed; // Twinkle speed
+    float trail; // Raindrop trail length
 
     Raindrop() : 
         position(0.0f),
@@ -245,9 +276,9 @@ public:
         color = _color;
         simulation = _simulation;
         velocity = glm::vec3(
-            (static_cast<float>(rand()) / RAND_MAX - 0.5f) * 0.5f, // 轻微的横向运动
-            -2.0f - static_cast<float>(rand()) / RAND_MAX * 3.0f,  // 更多速度变化
-            (static_cast<float>(rand()) / RAND_MAX - 0.5f) * 0.5f  // 轻微的前后运动
+            (static_cast<float>(rand()) / RAND_MAX - 0.5f) * 0.5f, // Slight horizontal movement
+            -2.0f - static_cast<float>(rand()) / RAND_MAX * 3.0f,  // More velocity variation
+            (static_cast<float>(rand()) / RAND_MAX - 0.5f) * 0.5f  // Slight front/back movement
         );
         size = 0.1f + static_cast<float>(rand()) / RAND_MAX * 0.15f;
         lifespan = 3.0f + static_cast<float>(rand()) / RAND_MAX * 3.0f;
@@ -256,17 +287,17 @@ public:
         state = 0;
         brightness = 0.8f + static_cast<float>(rand()) / RAND_MAX * 0.4f;
         twinkleSpeed = 1.0f + static_cast<float>(rand()) / RAND_MAX * 5.0f;
-        trail = 0.5f + static_cast<float>(rand()) / RAND_MAX * 1.5f; // 轨迹长度
+        trail = 0.5f + static_cast<float>(rand()) / RAND_MAX * 1.5f; // Trail length
     }
 
-    bool update(float deltaTime);  // 声明，但在RainSimulation类后实现
+    bool update(float deltaTime);  // Declaration, but implemented after RainSimulation class
 
     bool isDead() const {
         return state > 1 || lifetime > lifespan;
     }
 };
 
-// 水波类
+// Water ripple class
 class WaterRipple {
 public:
     glm::vec3 position;
@@ -278,8 +309,8 @@ public:
     float growthRate;
     float lifetime;
     float maxLifetime;
-    float pulseFrequency; // 脉动频率
-    float pulseAmplitude; // 脉动幅度
+    float pulseFrequency; // Pulse frequency
+    float pulseAmplitude; // Pulse amplitude
     
     WaterRipple() : 
         position(0.0f),
@@ -297,11 +328,11 @@ public:
     
     void init(const glm::vec3& _position, const glm::vec3& _color) {
         position = _position;
-        position.y = WATER_HEIGHT + 0.01f; // 略高于水面
+        position.y = WATER_HEIGHT + 0.01f; // Slightly above water surface
         color = _color;
-        radius = 0.2f; // 更小的初始半径
+        radius = 0.2f; // Smaller initial radius
         maxRadius = 5.0f + static_cast<float>(rand()) / RAND_MAX * 15.0f;
-        thickness = 0.1f + static_cast<float>(rand()) / RAND_MAX * 0.2f; // 更多厚度变化
+        thickness = 0.1f + static_cast<float>(rand()) / RAND_MAX * 0.2f; // More thickness variation
         opacity = 0.7f + static_cast<float>(rand()) / RAND_MAX * 0.3f;
         growthRate = 1.5f + static_cast<float>(rand()) / RAND_MAX * 3.0f;
         lifetime = 0.0f;
@@ -313,15 +344,15 @@ public:
     bool update(float deltaTime) {
         lifetime += deltaTime;
         
-        // 非线性增长 - 开始快，然后减慢
+        // Non-linear growth - fast at start, then slower
         float progress = lifetime / maxLifetime;
         float growthFactor = 1.0f - progress * 0.7f;
         radius += growthRate * deltaTime * growthFactor;
         
-        // 加入脉动效果
+        // Add pulsing effect
         thickness = 0.1f + 0.1f * sinf(lifetime * pulseFrequency) * pulseAmplitude;
         
-        // 逐渐减少不透明度，使用平滑的衰减曲线
+        // Gradually reduce opacity, using a smooth decay curve
         opacity = 0.8f * (1.0f - powf(progress, 1.5f));
         
         return isDead();
@@ -331,98 +362,107 @@ public:
         return radius >= maxRadius || opacity <= 0.05f || lifetime >= maxLifetime;
     }
     
-    // 获取当前厚度，考虑脉动效果
+    // Get current thickness, taking pulsing into account
     float getCurrentThickness() const {
         return thickness;
     }
 };
 
-// 应用类
+// Application class
 class RainSimulation {
 public:
-    // 窗口
+    // Window
     GLFWwindow* window;
     
-    // 着色器
+    // Shaders
     std::unique_ptr<Shader> waterShader;
     std::unique_ptr<Shader> raindropShader;
     std::unique_ptr<Shader> rippleShader;
-    std::unique_ptr<Shader> skyShader;    // 新增：天空着色器
-    std::unique_ptr<Shader> moonShader;   // 新增：月亮着色器
-    std::unique_ptr<Shader> starShader;   // 新增：星星着色器
-    std::unique_ptr<Shader> trailShader;  // 新增：雨滴轨迹着色器
+    std::unique_ptr<Shader> skyShader;    // New: sky shader
+    std::unique_ptr<Shader> moonShader;   // New: moon shader
+    std::unique_ptr<Shader> starShader;   // New: star shader
+    std::unique_ptr<Shader> trailShader;  // New: raindrop trail shader
     
-    // 几何体
+    // Geometry
     unsigned int waterVAO, waterVBO;
     unsigned int raindropVAO, raindropVBO;
     unsigned int rippleVAO, rippleVBO;
-    unsigned int skyVAO, skyVBO;          // 新增：天空
-    unsigned int moonVAO, moonVBO;        // 新增：月亮
-    unsigned int starVAO, starVBO;        // 新增：星星
-    unsigned int trailVAO, trailVBO;      // 新增：雨滴轨迹
+    unsigned int skyVAO, skyVBO;          // New: sky
+    unsigned int moonVAO, moonVBO;        // New: moon
+    unsigned int starVAO, starVBO;        // New: stars
+    unsigned int trailVAO, trailVBO;      // New: raindrop trail
     
-    // 纹理
+    // Textures
     unsigned int waterNormalTexture;
     unsigned int waterDuDvTexture;
     unsigned int waterReflectionTexture;
     unsigned int raindropGlowTexture;
     unsigned int skyTexture;
     
-    // 相机
+    // Camera
     glm::vec3 cameraPos;
     glm::vec3 cameraFront;
     glm::vec3 cameraUp;
     float cameraPitch;
     float cameraYaw;
     
-    // 雨滴和水波
+    // Keyboard state tracking for smooth camera movement
+    bool keys[1024] = {false};
+    
+    // Raindrops and water ripples
     std::vector<Raindrop> raindrops;
     std::vector<WaterRipple> ripples;
     
-    // 新增：星星和云朵
+    // New: stars and clouds
     std::vector<Star> stars;
     std::vector<Cloud> clouds;
     
-    // 配置
+    // Configuration
     struct {
-        int rainDensity = 80;  // 增加默认雨量
+        int rainDensity = 80;  // Increased default rain amount
         float maxRippleSize = 15.0f;
-        float updateInterval = 0.02f; // 更频繁的更新
+        float updateInterval = 0.02f; // More frequent updates
         float rippleFadeSpeed = 0.02f;
         std::vector<glm::vec3> raindropColors = {
-            glm::vec3(0.7f, 0.0f, 0.9f), // 紫色
-            glm::vec3(0.0f, 0.8f, 1.0f), // 青色
-            glm::vec3(1.0f, 0.9f, 0.0f), // 黄色
-            glm::vec3(1.0f, 0.3f, 0.0f), // 橙色
-            glm::vec3(0.0f, 0.9f, 0.4f)  // 青绿色
+            glm::vec3(0.7f, 0.0f, 0.9f), // Purple
+            glm::vec3(0.0f, 0.8f, 1.0f), // Cyan
+            glm::vec3(1.0f, 0.9f, 0.0f), // Yellow
+            glm::vec3(1.0f, 0.3f, 0.0f), // Orange
+            glm::vec3(0.0f, 0.9f, 0.4f)  // Teal
         };
-        // 新增：水波颜色
+        // New: ripple colors
         std::vector<glm::vec3> rippleColors = {
-            glm::vec3(0.4f, 0.6f, 1.0f), // 浅蓝色
-            glm::vec3(0.6f, 0.8f, 1.0f), // 浅青色
-            glm::vec3(0.7f, 0.7f, 1.0f), // 浅紫色
-            glm::vec3(0.5f, 0.7f, 0.9f), // 天蓝色
-            glm::vec3(0.4f, 0.7f, 0.7f)  // 青灰色
+            glm::vec3(0.4f, 0.6f, 1.0f), // Light blue
+            glm::vec3(0.6f, 0.8f, 1.0f), // Light cyan
+            glm::vec3(0.7f, 0.7f, 1.0f), // Light purple
+            glm::vec3(0.5f, 0.7f, 0.9f), // Sky blue
+            glm::vec3(0.4f, 0.7f, 0.7f)  // Teal gray
         };
-        // 雨滴大小范围
+        // Raindrop size range
         float minRaindropSize = 0.1f;
         float maxRaindropSize = 0.3f;
-        // 雨滴速度范围
+        // Raindrop speed range
         float minRaindropSpeed = 2.0f;
         float maxRaindropSpeed = 6.0f;
-        // 星星闪烁速度
+        // Star twinkle speed
         float starTwinkleSpeed = 2.0f;
-        // 水波环数
+        // Ripple rings
         int rippleRings = 3;
+        // Camera movement speed
+        float cameraSpeed = 10.0f;
+        // Water wave strength
+        float waveStrength = 0.2f;
+        // Show debug info
+        bool showDebugInfo = true;
     } config;
     
-    // SDL音频相关成员
-    // 音频声音
+    // SDL audio related members
+    // Audio sounds
     Mix_Chunk* raindropSound;
     Mix_Music* ambientRainSound;
     Mix_Chunk* waterRippleSound;
     
-    // 音频配置
+    // Audio configuration
     struct {
         bool soundEnabled = true;
         float masterVolume = 0.8f;
@@ -431,11 +471,20 @@ public:
         float rippleVolume = 0.4f;
     } audioConfig;
     
-    // 时间跟踪
+    // Time tracking
     float lastFrame = 0.0f;
     float deltaTime = 0.0f;
     float rainAccumulator = 0.0f;
-    float totalTime = 0.0f; // 总运行时间
+    float totalTime = 0.0f; // Total runtime
+    
+    // Performance metrics
+    struct {
+        float fps = 0.0f;
+        float smoothedFps = 0.0f;
+        float frameTimeMs = 0.0f;
+        uint32_t totalFrames = 0;
+        float fpsUpdateTime = 0.0f;
+    } performanceMetrics;
     
     RainSimulation() : 
         window(nullptr),
@@ -450,10 +499,10 @@ public:
     }
     
     ~RainSimulation() {
-        // 释放音频资源
+        // Release audio resources
         cleanup();
 
-        // 释放资源
+        // Release resources
         glDeleteVertexArrays(1, &waterVAO);
         glDeleteBuffers(1, &waterVBO);
         glDeleteVertexArrays(1, &raindropVAO);
@@ -475,18 +524,18 @@ public:
         glDeleteTextures(1, &raindropGlowTexture);
         glDeleteTextures(1, &skyTexture);
         
-        // ImGui清理
+        // ImGui cleanup
         ImGui_ImplOpenGL3_Shutdown();
         ImGui_ImplGlfw_Shutdown();
         ImGui::DestroyContext();
         
-        // 关闭GLFW
+        // Close GLFW
         glfwTerminate();
     }
     
-    // 清理函数，在析构函数中调用
+    // Cleanup function, called in destructor
     void cleanup() {
-        // 释放音频资源
+        // Release audio resources
         if (raindropSound != nullptr) {
             Mix_FreeChunk(raindropSound);
             raindropSound = nullptr;
@@ -502,54 +551,72 @@ public:
             waterRippleSound = nullptr;
         }
         
-        // 关闭SDL_mixer
+        // Close SDL_mixer
         Mix_CloseAudio();
         Mix_Quit();
         SDL_Quit();
     }
     
-    // 初始化音频子系统的函数
+    // Function to initialize the audio subsystem
     bool initAudio() {
-        // 初始化SDL
+        // Initialize SDL
         if (SDL_Init(SDL_INIT_AUDIO) < 0) {
-            std::cerr << "无法初始化SDL_AUDIO: " << SDL_GetError() << std::endl;
+            std::cerr << "Failed to initialize SDL_AUDIO: " << SDL_GetError() << std::endl;
             audioConfig.soundEnabled = false;
             return false;
         }
         
-        // 初始化SDL_mixer
+        // Initialize SDL_mixer
         if (Mix_OpenAudio(44100, MIX_DEFAULT_FORMAT, 2, 2048) < 0) {
-            std::cerr << "无法初始化SDL_Mixer: " << Mix_GetError() << std::endl;
+            std::cerr << "Failed to initialize SDL_Mixer: " << Mix_GetError() << std::endl;
             audioConfig.soundEnabled = false;
             return false;
         }
         
-        // 分配更多通道用于同时播放多个音效
+        // Allocate more channels for simultaneous sound playback
         Mix_AllocateChannels(32);
         
-        // 设置主音量
+        // Set master volume
         Mix_Volume(-1, static_cast<int>(audioConfig.masterVolume * MIX_MAX_VOLUME));
         
-        // 确保音频目录存在
+        // Ensure audio directory exists
         ensureAudioFilesExist();
         
-        // 加载音频文件
+        // Load audio files
         raindropSound = Mix_LoadWAV("audio/raindrop_splash.wav");
         if (!raindropSound) {
-            std::cerr << "无法加载雨滴音效: " << Mix_GetError() << std::endl;
+            std::cerr << "Failed to load raindrop sound effect: " << Mix_GetError() << std::endl;
+            
+            // Try alternate path
+            raindropSound = Mix_LoadWAV("../audio/raindrop_splash.wav");
+            if (raindropSound) {
+                std::cout << "Successfully loaded raindrop sound from project root" << std::endl;
+            }
         }
         
         ambientRainSound = Mix_LoadMUS("audio/ambient_rain.mp3");
         if (!ambientRainSound) {
-            std::cerr << "无法加载环境雨声: " << Mix_GetError() << std::endl;
+            std::cerr << "Failed to load ambient rain sound: " << Mix_GetError() << std::endl;
+            
+            // Try alternate path
+            ambientRainSound = Mix_LoadMUS("../audio/ambient_rain.mp3");
+            if (ambientRainSound) {
+                std::cout << "Successfully loaded ambient rain from project root" << std::endl;
+            }
         }
         
         waterRippleSound = Mix_LoadWAV("audio/water_ripple.wav");
         if (!waterRippleSound) {
-            std::cerr << "无法加载水波音效: " << Mix_GetError() << std::endl;
+            std::cerr << "Failed to load water ripple sound effect: " << Mix_GetError() << std::endl;
+            
+            // Try alternate path
+            waterRippleSound = Mix_LoadWAV("../audio/water_ripple.wav");
+            if (waterRippleSound) {
+                std::cout << "Successfully loaded water ripple sound from project root" << std::endl;
+            }
         }
         
-        // 设置各个音效的音量
+        // Set volume for each sound effect
         if (raindropSound) {
             Mix_VolumeChunk(raindropSound, static_cast<int>(audioConfig.raindropVolume * MIX_MAX_VOLUME));
         }
@@ -558,66 +625,66 @@ public:
             Mix_VolumeChunk(waterRippleSound, static_cast<int>(audioConfig.rippleVolume * MIX_MAX_VOLUME));
         }
         
-        // 播放背景雨声（循环）
+        // Play background rain sound (loop)
         if (ambientRainSound) {
             Mix_VolumeMusic(static_cast<int>(audioConfig.ambientVolume * MIX_MAX_VOLUME));
-            Mix_PlayMusic(ambientRainSound, -1); // -1表示无限循环
+            Mix_PlayMusic(ambientRainSound, -1); // -1 means infinite loop
         }
         
         return true;
     }
 
-    // 播放雨滴声音的函数
+    // Function to play raindrop sound
     void playRaindropSound(const glm::vec3& position) {
         if (!audioConfig.soundEnabled || !raindropSound)
             return;
             
-        // 计算音量基于与相机的距离
+        // Calculate volume based on distance from camera
         float distance = glm::length(position - cameraPos);
-        float volumeScale = 1.0f - std::min(distance / 50.0f, 0.95f); // 50.0f是最大听觉距离
+        float volumeScale = 1.0f - std::min(distance / 50.0f, 0.95f); // 50.0f is maximum audible distance
         
-        // 随机化音量和音高以增加多样性
+        // Randomize volume and pitch for variety
         float volumeVariation = 0.8f + static_cast<float>(rand()) / RAND_MAX * 0.4f;
         int volume = static_cast<int>(audioConfig.raindropVolume * MIX_MAX_VOLUME * volumeScale * volumeVariation);
         
-        // 找一个空闲通道播放
+        // Find an available channel to play
         int channel = Mix_PlayChannel(-1, raindropSound, 0);
         if (channel != -1) {
-            // 设置声道音量
+            // Set channel volume
             Mix_Volume(channel, volume);
         }
     }
 
-    // 播放水波声音的函数
+    // Function to play water ripple sound
     void playRippleSound(const glm::vec3& position) {
         if (!audioConfig.soundEnabled || !waterRippleSound)
             return;
             
-        // 计算音量基于与相机的距离
+        // Calculate volume based on distance from camera
         float distance = glm::length(position - cameraPos);
-        float volumeScale = 1.0f - std::min(distance / 50.0f, 0.95f); // 50.0f是最大听觉距离
+        float volumeScale = 1.0f - std::min(distance / 50.0f, 0.95f); // 50.0f is maximum audible distance
         
-        // 随机化音量以增加多样性
+        // Randomize volume for variety
         float volumeVariation = 0.7f + static_cast<float>(rand()) / RAND_MAX * 0.6f;
         int volume = static_cast<int>(audioConfig.rippleVolume * MIX_MAX_VOLUME * volumeScale * volumeVariation * 0.5f);
         
-        // 找一个空闲通道播放
+        // Find an available channel to play
         int channel = Mix_PlayChannel(-1, waterRippleSound, 0);
         if (channel != -1) {
-            // 设置声道音量
+            // Set channel volume
             Mix_Volume(channel, volume);
         }
     }
 
-    // 更新音频设置
+    // Update audio settings
     void updateAudioSettings() {
         if (!audioConfig.soundEnabled)
             return;
             
-        // 更新主音量
+        // Update master volume
         Mix_Volume(-1, static_cast<int>(audioConfig.masterVolume * MIX_MAX_VOLUME));
         
-        // 更新音效音量
+        // Update sound effect volumes
         if (raindropSound) {
             Mix_VolumeChunk(raindropSound, static_cast<int>(audioConfig.raindropVolume * MIX_MAX_VOLUME));
         }
@@ -626,24 +693,23 @@ public:
             Mix_VolumeChunk(waterRippleSound, static_cast<int>(audioConfig.rippleVolume * MIX_MAX_VOLUME));
         }
         
-        // 更新音乐音量
+        // Update music volume
         Mix_VolumeMusic(static_cast<int>(audioConfig.ambientVolume * MIX_MAX_VOLUME));
     }
-
     bool init() {
-        // 初始化GLFW
+        // Initialize GLFW
         if (!glfwInit()) {
             std::cerr << "Failed to initialize GLFW" << std::endl;
             return false;
         }
         
-        // 设置OpenGL版本
+        // Set OpenGL version
         glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
         glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
         glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
         
 #ifdef __APPLE__
-        glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE); // Mac OS X需要
+        glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE); // Required for Mac OS X
 #endif
         
         glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GL_TRUE);  // For better error reporting
@@ -651,8 +717,8 @@ public:
         glfwWindowHint(GLFW_VISIBLE, GL_TRUE);               // Make window visible
         glfwWindowHint(GLFW_FOCUSED, GL_TRUE);               // Give focus to the window
 
-        // 创建窗口
-        window = glfwCreateWindow(SCR_WIDTH, SCR_HEIGHT, "池塘夜雨彩色雨滴模拟", NULL, NULL);
+        // Create window
+        window = glfwCreateWindow(SCR_WIDTH, SCR_HEIGHT, "Colorful Rain Simulation", NULL, NULL);
         if (!window) {
             std::cerr << "Failed to create GLFW window" << std::endl;
             glfwTerminate();
@@ -664,76 +730,87 @@ public:
             glViewport(0, 0, width, height);
         });
         
-        // 初始化GLEW
+        // Set key callback to track key states
+        glfwSetKeyCallback(window, [](GLFWwindow* window, int key, int scancode, int action, int mods) {
+            RainSimulation* app = static_cast<RainSimulation*>(glfwGetWindowUserPointer(window));
+            if (key >= 0 && key < 1024) {
+                if (action == GLFW_PRESS)
+                    app->keys[key] = true;
+                else if (action == GLFW_RELEASE)
+                    app->keys[key] = false;
+            }
+        });
+        
+        // Store this instance as user pointer for callbacks
+        glfwSetWindowUserPointer(window, this);
+        
+        // Initialize GLEW
         glewExperimental = GL_TRUE;
         if (glewInit() != GLEW_OK) {
             std::cerr << "Failed to initialize GLEW" << std::endl;
             return false;
         }
         
-        // 启用深度测试
+        // Enable depth testing
         glEnable(GL_DEPTH_TEST);
         
-        // 启用混合
+        // Enable blending
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
         
-        // 启用点大小
+        // Enable point size
         glEnable(GL_PROGRAM_POINT_SIZE);
         
-        // 初始化ImGui
+        // Initialize ImGui
         IMGUI_CHECKVERSION();
         ImGui::CreateContext();
         ImGuiIO& io = ImGui::GetIO(); (void)io;
         
-        // 设置ImGui样式
+        // Set ImGui style
         ImGui::StyleColorsDark();
         
-        // 解决中文显示问题 - 加载中文字体
-        io.Fonts->AddFontFromFileTTF("c:\\Windows\\Fonts\\simhei.ttf", 18.0f, NULL, io.Fonts->GetGlyphRangesChineseFull());
-        
-        // 初始化ImGui的GLFW和OpenGL部分
+        // Initialize ImGui GLFW and OpenGL parts
         ImGui_ImplGlfw_InitForOpenGL(window, true);
         ImGui_ImplOpenGL3_Init("#version 330");
         
-        // 初始化音频
+        // Initialize audio
         initAudio();
         
-        // 加载着色器
+        // Load shaders
         loadShaders();
         
-        // 创建几何体
+        // Create geometry
         createGeometry();
         
-        // 加载纹理
+        // Load textures
         loadTextures();
         
-        // 初始化星星
+        // Initialize stars
         initStars();
         
-        // 初始化云朵
+        // Initialize clouds
         initClouds();
         
         return true;
     }
     
-    // 初始化星星
+    // Initialize stars
     void initStars() {
         stars.clear();
         
         for (int i = 0; i < STARS_COUNT; i++) {
             Star star;
             
-            // 随机位置 - 在天空穹顶
+            // Random position - in sky dome
             float theta = static_cast<float>(rand()) / RAND_MAX * 2.0f * glm::pi<float>();
-            float phi = static_cast<float>(rand()) / RAND_MAX * glm::pi<float>() * 0.5f; // 上半球
+            float phi = static_cast<float>(rand()) / RAND_MAX * glm::pi<float>() * 0.5f; // Upper hemisphere
             
             float radius = 200.0f + static_cast<float>(rand()) / RAND_MAX * 50.0f;
             star.position.x = radius * sin(phi) * cos(theta);
-            star.position.y = radius * cos(phi) + 20.0f; // 向上偏移
+            star.position.y = radius * cos(phi) + 20.0f; // Offset upward
             star.position.z = radius * sin(phi) * sin(theta);
             
-            // 随机亮度和闪烁速度
+            // Random brightness and twinkle speed
             star.brightness = 0.5f + static_cast<float>(rand()) / RAND_MAX * 0.5f;
             star.twinkleSpeed = 0.5f + static_cast<float>(rand()) / RAND_MAX * 5.0f;
             star.size = 0.5f + static_cast<float>(rand()) / RAND_MAX * 1.5f;
@@ -742,19 +819,19 @@ public:
         }
     }
     
-    // 初始化云朵
+    // Initialize clouds
     void initClouds() {
         clouds.clear();
         
         for (int i = 0; i < CLOUD_COUNT; i++) {
             Cloud cloud;
             
-            // 随机位置 - 在天空
+            // Random position - in sky
             cloud.position.x = -100.0f + static_cast<float>(rand()) / RAND_MAX * 200.0f;
             cloud.position.y = 40.0f + static_cast<float>(rand()) / RAND_MAX * 30.0f;
             cloud.position.z = -100.0f + static_cast<float>(rand()) / RAND_MAX * 100.0f;
             
-            // 随机大小、不透明度和速度
+            // Random size, opacity and speed
             cloud.size = 10.0f + static_cast<float>(rand()) / RAND_MAX * 20.0f;
             cloud.opacity = 0.2f + static_cast<float>(rand()) / RAND_MAX * 0.3f;
             cloud.speed = 0.5f + static_cast<float>(rand()) / RAND_MAX * 2.0f;
@@ -764,32 +841,71 @@ public:
     }
     
     void loadShaders() {
-        // 加载水面着色器
-        waterShader = std::make_unique<Shader>("shaders/water.vert", "shaders/water.frag");
+        // Try both paths to find shader files
+        const char* waterVertPath = "shaders/water.vert";
+        const char* waterFragPath = "shaders/water.frag";
+        const char* raindropVertPath = "shaders/raindrop.vert";
+        const char* raindropFragPath = "shaders/raindrop.frag";
+        const char* rippleVertPath = "shaders/ripple.vert";
+        const char* rippleFragPath = "shaders/ripple.frag";
         
-        // 加载雨滴着色器
-        raindropShader = std::make_unique<Shader>("shaders/raindrop.vert", "shaders/raindrop.frag");
+        // Check if shader files exist, otherwise use root path
+        if (!file_exists(waterVertPath)) {
+            std::cout << "Shader files not found in build directory, checking project root..." << std::endl;
+            
+            // Check if they exist in project root
+            if (file_exists("../shaders/water.vert")) {
+                waterVertPath = "../shaders/water.vert";
+                waterFragPath = "../shaders/water.frag";
+                raindropVertPath = "../shaders/raindrop.vert";
+                raindropFragPath = "../shaders/raindrop.frag";
+                rippleVertPath = "../shaders/ripple.vert";
+                rippleFragPath = "../shaders/ripple.frag";
+                
+                std::cout << "Found shader files in project root directory" << std::endl;
+            } else {
+                std::cout << "Shader files not found, will write and use default shaders" << std::endl;
+                writeShaderFiles();
+            }
+        }
         
-        // 加载水波着色器
-        rippleShader = std::make_unique<Shader>("shaders/ripple.vert", "shaders/ripple.frag");
-        
-        // 加载天空着色器
-        skyShader = std::make_unique<Shader>("shaders/water.vert", "shaders/water.frag");
-        
-        // 加载月亮着色器
-        moonShader = std::make_unique<Shader>("shaders/raindrop.vert", "shaders/raindrop.frag");
-        
-        // 加载星星着色器
-        starShader = std::make_unique<Shader>("shaders/raindrop.vert", "shaders/raindrop.frag");
-        
-        // 加载雨滴轨迹着色器
-        trailShader = std::make_unique<Shader>("shaders/ripple.vert", "shaders/ripple.frag");
+        try {
+            // Load water shader
+            waterShader = std::make_unique<Shader>(waterVertPath, waterFragPath);
+            
+            // Load raindrop shader
+            raindropShader = std::make_unique<Shader>(raindropVertPath, raindropFragPath);
+            
+            // Load ripple shader
+            rippleShader = std::make_unique<Shader>(rippleVertPath, rippleFragPath);
+            
+            // Reuse shaders for other elements
+            skyShader = std::make_unique<Shader>(waterVertPath, waterFragPath);
+            moonShader = std::make_unique<Shader>(raindropVertPath, raindropFragPath);
+            starShader = std::make_unique<Shader>(raindropVertPath, raindropFragPath);
+            trailShader = std::make_unique<Shader>(rippleVertPath, rippleFragPath);
+        }
+        catch (const std::exception& e) {
+            std::cerr << "Error loading shaders: " << e.what() << std::endl;
+            std::cout << "Writing and using default shaders instead" << std::endl;
+            
+            writeShaderFiles();
+            
+            // Load shaders again after writing defaults
+            waterShader = std::make_unique<Shader>("shaders/water.vert", "shaders/water.frag");
+            raindropShader = std::make_unique<Shader>("shaders/raindrop.vert", "shaders/raindrop.frag");
+            rippleShader = std::make_unique<Shader>("shaders/ripple.vert", "shaders/ripple.frag");
+            skyShader = std::make_unique<Shader>("shaders/water.vert", "shaders/water.frag");
+            moonShader = std::make_unique<Shader>("shaders/raindrop.vert", "shaders/raindrop.frag");
+            starShader = std::make_unique<Shader>("shaders/raindrop.vert", "shaders/raindrop.frag");
+            trailShader = std::make_unique<Shader>("shaders/ripple.vert", "shaders/ripple.frag");
+        }
     }
     
     void createGeometry() {
-        // 创建水面平面
+        // Create water plane
         float waterVertices[] = {
-            // 位置              // 纹理坐标
+            // Position          // Texture coordinates
             -POND_SIZE/2, 0.0f, -POND_SIZE/2,  0.0f, 0.0f,
              POND_SIZE/2, 0.0f, -POND_SIZE/2,  1.0f, 0.0f,
              POND_SIZE/2, 0.0f,  POND_SIZE/2,  1.0f, 1.0f,
@@ -806,20 +922,20 @@ public:
         glBindBuffer(GL_ARRAY_BUFFER, waterVBO);
         glBufferData(GL_ARRAY_BUFFER, sizeof(waterVertices), waterVertices, GL_STATIC_DRAW);
         
-        // 位置属性
+        // Position attribute
         glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)0);
         glEnableVertexAttribArray(0);
         
-        // 纹理坐标属性
+        // Texture coordinate attribute
         glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3 * sizeof(float)));
         glEnableVertexAttribArray(1);
         
         glBindBuffer(GL_ARRAY_BUFFER, 0);
         glBindVertexArray(0);
         
-        // 创建雨滴点
+        // Create raindrop point
         float raindropVertices[] = {
-            // 一个点
+            // A single point
             0.0f, 0.0f, 0.0f
         };
         
@@ -830,18 +946,18 @@ public:
         glBindBuffer(GL_ARRAY_BUFFER, raindropVBO);
         glBufferData(GL_ARRAY_BUFFER, sizeof(raindropVertices), raindropVertices, GL_STATIC_DRAW);
         
-        // 位置属性
+        // Position attribute
         glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
         glEnableVertexAttribArray(0);
         
         glBindBuffer(GL_ARRAY_BUFFER, 0);
         glBindVertexArray(0);
         
-        // 创建水波环 - 更多节点和细节
+        // Create water ripple ring - more nodes and details
         std::vector<float> rippleVertices;
-        const int segments = 128; // 增加细节
+        const int segments = 128; // More detail
         
-        // 创建多个同心环
+        // Create multiple concentric rings
         for (int ring = 0; ring < config.rippleRings; ring++) {
             float innerRadius = 0.7f + 0.1f * ring;
             float outerRadius = 0.9f + 0.1f * ring;
@@ -850,32 +966,32 @@ public:
                 float theta1 = 2.0f * glm::pi<float>() * float(i) / float(segments);
                 float theta2 = 2.0f * glm::pi<float>() * float(i + 1) / float(segments);
                 
-                // 内环点
+                // Inner ring point
                 rippleVertices.push_back(innerRadius * cos(theta1));
                 rippleVertices.push_back(0.0f);
                 rippleVertices.push_back(innerRadius * sin(theta1));
                 
-                // 外环点
+                // Outer ring point
                 rippleVertices.push_back(outerRadius * cos(theta1));
                 rippleVertices.push_back(0.0f);
                 rippleVertices.push_back(outerRadius * sin(theta1));
                 
-                // 外环点 (下一个)
+                // Outer ring point (next)
                 rippleVertices.push_back(outerRadius * cos(theta2));
                 rippleVertices.push_back(0.0f);
                 rippleVertices.push_back(outerRadius * sin(theta2));
                 
-                // 内环点
+                // Inner ring point
                 rippleVertices.push_back(innerRadius * cos(theta1));
                 rippleVertices.push_back(0.0f);
                 rippleVertices.push_back(innerRadius * sin(theta1));
                 
-                // 外环点 (下一个)
+                // Outer ring point (next)
                 rippleVertices.push_back(outerRadius * cos(theta2));
                 rippleVertices.push_back(0.0f);
                 rippleVertices.push_back(outerRadius * sin(theta2));
                 
-                // 内环点 (下一个)
+                // Inner ring point (next)
                 rippleVertices.push_back(innerRadius * cos(theta2));
                 rippleVertices.push_back(0.0f);
                 rippleVertices.push_back(innerRadius * sin(theta2));
@@ -889,19 +1005,19 @@ public:
         glBindBuffer(GL_ARRAY_BUFFER, rippleVBO);
         glBufferData(GL_ARRAY_BUFFER, rippleVertices.size() * sizeof(float), rippleVertices.data(), GL_STATIC_DRAW);
         
-        // 位置属性
+        // Position attribute
         glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
         glEnableVertexAttribArray(0);
         
         glBindBuffer(GL_ARRAY_BUFFER, 0);
         glBindVertexArray(0);
         
-        // 创建天空穹顶
+        // Create sky dome
         std::vector<float> skyVertices;
         const int skySegments = 32;
         const float skyRadius = 300.0f;
         
-        // 创建半球形天空
+        // Create hemisphere sky
         for (int y = 0; y < skySegments / 2; y++) {
             for (int x = 0; x < skySegments; x++) {
                 float theta1 = 2.0f * glm::pi<float>() * float(x) / float(skySegments);
@@ -910,24 +1026,24 @@ public:
                 float phi1 = glm::pi<float>() * float(y) / float(skySegments / 2);
                 float phi2 = glm::pi<float>() * float(y + 1) / float(skySegments / 2);
                 
-                // 四个点构成两个三角形
+                // Four points make two triangles
                 glm::vec3 p1(skyRadius * sin(phi1) * cos(theta1), skyRadius * cos(phi1), skyRadius * sin(phi1) * sin(theta1));
                 glm::vec3 p2(skyRadius * sin(phi1) * cos(theta2), skyRadius * cos(phi1), skyRadius * sin(phi1) * sin(theta2));
                 glm::vec3 p3(skyRadius * sin(phi2) * cos(theta2), skyRadius * cos(phi2), skyRadius * sin(phi2) * sin(theta2));
                 glm::vec3 p4(skyRadius * sin(phi2) * cos(theta1), skyRadius * cos(phi2), skyRadius * sin(phi2) * sin(theta1));
                 
-                // 纹理坐标
+                // Texture coordinates
                 glm::vec2 t1(float(x) / float(skySegments), float(y) / float(skySegments / 2));
                 glm::vec2 t2(float(x + 1) / float(skySegments), float(y) / float(skySegments / 2));
                 glm::vec2 t3(float(x + 1) / float(skySegments), float(y + 1) / float(skySegments / 2));
                 glm::vec2 t4(float(x) / float(skySegments), float(y + 1) / float(skySegments / 2));
                 
-                // 第一个三角形
+                // First triangle
                 skyVertices.push_back(p1.x); skyVertices.push_back(p1.y); skyVertices.push_back(p1.z); skyVertices.push_back(t1.x); skyVertices.push_back(t1.y);
                 skyVertices.push_back(p2.x); skyVertices.push_back(p2.y); skyVertices.push_back(p2.z); skyVertices.push_back(t2.x); skyVertices.push_back(t2.y);
                 skyVertices.push_back(p3.x); skyVertices.push_back(p3.y); skyVertices.push_back(p3.z); skyVertices.push_back(t3.x); skyVertices.push_back(t3.y);
                 
-                // 第二个三角形
+                // Second triangle
                 skyVertices.push_back(p1.x); skyVertices.push_back(p1.y); skyVertices.push_back(p1.z); skyVertices.push_back(t1.x); skyVertices.push_back(t1.y);
                 skyVertices.push_back(p3.x); skyVertices.push_back(p3.y); skyVertices.push_back(p3.z); skyVertices.push_back(t3.x); skyVertices.push_back(t3.y);
                 skyVertices.push_back(p4.x); skyVertices.push_back(p4.y); skyVertices.push_back(p4.z); skyVertices.push_back(t4.x); skyVertices.push_back(t4.y);
@@ -941,27 +1057,27 @@ public:
         glBindBuffer(GL_ARRAY_BUFFER, skyVBO);
         glBufferData(GL_ARRAY_BUFFER, skyVertices.size() * sizeof(float), skyVertices.data(), GL_STATIC_DRAW);
         
-        // 位置属性
+        // Position attribute
         glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)0);
         glEnableVertexAttribArray(0);
         
-        // 纹理坐标属性
+        // Texture coordinate attribute
         glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3 * sizeof(float)));
         glEnableVertexAttribArray(1);
         
         glBindBuffer(GL_ARRAY_BUFFER, 0);
         glBindVertexArray(0);
         
-        // 创建月亮圆盘
+        // Create moon disc
         std::vector<float> moonVertices;
         const int moonSegments = 64;
         
-        // 月亮中心点
+        // Moon center point
         moonVertices.push_back(0.0f);
         moonVertices.push_back(0.0f);
         moonVertices.push_back(0.0f);
         
-        // 创建月亮圆盘
+        // Create moon disc
         for (int i = 0; i <= moonSegments; i++) {
             float theta = 2.0f * glm::pi<float>() * float(i) / float(moonSegments);
             float x = cos(theta);
@@ -979,14 +1095,14 @@ public:
         glBindBuffer(GL_ARRAY_BUFFER, moonVBO);
         glBufferData(GL_ARRAY_BUFFER, moonVertices.size() * sizeof(float), moonVertices.data(), GL_STATIC_DRAW);
         
-        // 位置属性
+        // Position attribute
         glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
         glEnableVertexAttribArray(0);
         
         glBindBuffer(GL_ARRAY_BUFFER, 0);
         glBindVertexArray(0);
         
-        // 创建雨滴轨迹几何体
+        // Create raindrop trail geometry
         float trailVertices[] = {
             -0.5f, 0.0f, 0.0f,
              0.5f, 0.0f, 0.0f,
@@ -1000,7 +1116,7 @@ public:
         glBindBuffer(GL_ARRAY_BUFFER, trailVBO);
         glBufferData(GL_ARRAY_BUFFER, sizeof(trailVertices), trailVertices, GL_STATIC_DRAW);
         
-        // 位置属性
+        // Position attribute
         glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
         glEnableVertexAttribArray(0);
         
@@ -1008,13 +1124,13 @@ public:
         glBindVertexArray(0);
     }
     
-    // 修改loadTextures函数
+    // Modified loadTextures function
     void loadTextures() {
-        // 确保纹理存在
+        // Ensure textures exist
         ensureTexturesExist();
         
-        // 加载所有需要的纹理
-        waterNormalTexture = loadTexture("textures/waternormal.jpg");
+        // Try to load textures from build directory first
+        waterNormalTexture = loadTexture("textures/waternormal.jpeg");
         waterDuDvTexture = loadTexture("textures/waterDuDv.jpg");
         waterReflectionTexture = loadTexture("textures/waterReflection.jpg");
         raindropGlowTexture = loadTexture("textures/raindrop_glow.png");
@@ -1025,23 +1141,33 @@ public:
         unsigned int textureID;
         glGenTextures(1, &textureID);
         
-        // 绑定纹理，后续的所有GL_TEXTURE_2D操作都会影响这个纹理
+        // Bind texture, all subsequent GL_TEXTURE_2D operations will affect this texture
         glBindTexture(GL_TEXTURE_2D, textureID);
         
-        // 设置纹理包装和过滤参数
+        // Set texture wrapping and filtering parameters
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
         
-        // 加载并生成纹理
+        // Load and generate texture
         int width, height, nrChannels;
         
-        // 翻转图像，因为OpenGL期望以左下角为原点
+        // Flip image as OpenGL expects bottom-left origin
         stbi_set_flip_vertically_on_load(true);
         
-        // 尝试加载图像
+        // Try to load image
         unsigned char *data = stbi_load(path, &width, &height, &nrChannels, 0);
+        
+        // If loading failed, try alternate path
+        if (!data) {
+            std::string projectRootPath = std::string("../") + path;
+            data = stbi_load(projectRootPath.c_str(), &width, &height, &nrChannels, 0);
+            
+            if (data) {
+                std::cout << "Successfully loaded texture from project root: " << projectRootPath << std::endl;
+            }
+        }
         
         if (data) {
             GLenum format;
@@ -1052,27 +1178,27 @@ public:
             else if (nrChannels == 4)
                 format = GL_RGBA;
             else {
-                std::cerr << "未知的图像格式: " << path << " (通道数: " << nrChannels << ")" << std::endl;
-                format = GL_RGB; // 默认尝试RGB
+                std::cerr << "Unknown image format: " << path << " (channels: " << nrChannels << ")" << std::endl;
+                format = GL_RGB; // Default to RGB
             }
             
-            // 生成纹理
+            // Generate texture
             glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, format, GL_UNSIGNED_BYTE, data);
             glGenerateMipmap(GL_TEXTURE_2D);
             
-            std::cout << "成功加载纹理: " << path << " (" << width << "x" << height << ", " 
+            std::cout << "Successfully loaded texture: " << path << " (" << width << "x" << height << ", " 
                       << nrChannels << " channels)" << std::endl;
         } else {
-            std::cerr << "纹理加载失败: " << path << std::endl;
+            std::cerr << "Texture loading failed: " << path << std::endl;
             
-            // 如果纹理加载失败，创建一个默认纹理
-            // 创建一个8x8的棋盘格纹理，用于替代丢失的纹理
+            // If texture loading failed, create a default texture
+            // Create an 8x8 checkerboard texture as a fallback
             unsigned char defaultTextureData[8*8*4];
             
             if (strstr(path, "normal")) {
-                // 法线贴图的默认值: 随机法线
+                // Default value for normal map: random normals
                 for (int i = 0; i < 8*8; i++) {
-                    // 随机法线 - 映射为RGB值
+                    // Random normal - mapped to RGB values
                     float nx = (static_cast<float>(rand()) / RAND_MAX * 2.0f - 1.0f) * 0.2f;
                     float ny = 0.8f + static_cast<float>(rand()) / RAND_MAX * 0.2f;
                     float nz = (static_cast<float>(rand()) / RAND_MAX * 2.0f - 1.0f) * 0.2f;
@@ -1082,7 +1208,7 @@ public:
                     ny /= length;
                     nz /= length;
                     
-                    // 转换为RGB (0-255)
+                    // Convert to RGB (0-255)
                     defaultTextureData[i*4+0] = static_cast<unsigned char>((nx * 0.5f + 0.5f) * 255); // R
                     defaultTextureData[i*4+1] = static_cast<unsigned char>((ny * 0.5f + 0.5f) * 255); // G
                     defaultTextureData[i*4+2] = static_cast<unsigned char>((nz * 0.5f + 0.5f) * 255); // B
@@ -1090,9 +1216,9 @@ public:
                 }
                 glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 8, 8, 0, GL_RGBA, GL_UNSIGNED_BYTE, defaultTextureData);
             } else if (strstr(path, "DuDv")) {
-                // DuDv贴图的默认值: 随机扰动
+                // Default value for DuDv map: random distortions
                 for (int i = 0; i < 8*8; i++) {
-                    // 随机扰动值
+                    // Random distortion values
                     defaultTextureData[i*4+0] = 128 + rand() % 40 - 20; // R
                     defaultTextureData[i*4+1] = 128 + rand() % 40 - 20; // G
                     defaultTextureData[i*4+2] = 128; // B
@@ -1100,17 +1226,17 @@ public:
                 }
                 glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 8, 8, 0, GL_RGBA, GL_UNSIGNED_BYTE, defaultTextureData);
             } else if (strstr(path, "Reflection")) {
-                // 反射贴图默认值: 生成随机的夜空反射纹理
+                // Default value for reflection map: generate random night sky reflection texture
                 for (int y = 0; y < 8; y++) {
                     for (int x = 0; x < 8; x++) {
                         int i = y*8 + x;
                         
-                        // 基础深蓝色调
+                        // Base deep blue tone
                         defaultTextureData[i*4+0] = 10 + rand() % 20;  // R
                         defaultTextureData[i*4+1] = 20 + rand() % 30;  // G
                         defaultTextureData[i*4+2] = 40 + rand() % 50;  // B
                         
-                        // 偶尔添加星星反射
+                        // Occasionally add star reflections
                         if (rand() % 20 == 0) {
                             defaultTextureData[i*4+0] = 200 + rand() % 55; // R
                             defaultTextureData[i*4+1] = 200 + rand() % 55; // G
@@ -1122,19 +1248,19 @@ public:
                 }
                 glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 8, 8, 0, GL_RGBA, GL_UNSIGNED_BYTE, defaultTextureData);
             } else if (strstr(path, "glow")) {
-                // 光晕贴图: 圆形渐变
+                // Glow map: circular gradient
                 for (int y = 0; y < 8; y++) {
                     for (int x = 0; x < 8; x++) {
                         int i = y*8 + x;
                         
-                        // 计算到中心的距离
+                        // Calculate distance to center
                         float dx = (x - 3.5f) / 3.5f;
                         float dy = (y - 3.5f) / 3.5f;
                         float dist = sqrt(dx*dx + dy*dy);
                         
-                        // 圆形渐变亮度
+                        // Circular gradient brightness
                         float brightness = 1.0f - std::min(dist, 1.0f);
-                        brightness = brightness * brightness; // 平方使边缘更柔和
+                        brightness = brightness * brightness; // Square to make edges softer
                         
                         defaultTextureData[i*4+0] = static_cast<unsigned char>(brightness * 255); // R
                         defaultTextureData[i*4+1] = static_cast<unsigned char>(brightness * 255); // G
@@ -1144,20 +1270,20 @@ public:
                 }
                 glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 8, 8, 0, GL_RGBA, GL_UNSIGNED_BYTE, defaultTextureData);
             } else if (strstr(path, "sky")) {
-                // 天空贴图: 渐变夜空
+                // Sky map: gradient night sky
                 for (int y = 0; y < 8; y++) {
                     for (int x = 0; x < 8; x++) {
                         int i = y*8 + x;
                         
-                        // 从底部到顶部的渐变
+                        // Gradient from bottom to top
                         float gradient = static_cast<float>(y) / 7.0f;
                         
-                        // 深蓝到黑色渐变
+                        // Deep blue to black gradient
                         defaultTextureData[i*4+0] = static_cast<unsigned char>(5 + (1.0f - gradient) * 15); // R
                         defaultTextureData[i*4+1] = static_cast<unsigned char>(10 + (1.0f - gradient) * 20); // G
                         defaultTextureData[i*4+2] = static_cast<unsigned char>(30 + (1.0f - gradient) * 50); // B
                         
-                        // 随机添加星星
+                        // Randomly add stars
                         if (rand() % 30 == 0) {
                             defaultTextureData[i*4+0] = 200 + rand() % 55; // R
                             defaultTextureData[i*4+1] = 200 + rand() % 55; // G
@@ -1169,7 +1295,7 @@ public:
                 }
                 glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 8, 8, 0, GL_RGBA, GL_UNSIGNED_BYTE, defaultTextureData);
             } else {
-                // 默认: 棋盘格纹理
+                // Default: checkerboard texture
                 for (int y = 0; y < 8; y++) {
                     for (int x = 0; x < 8; x++) {
                         int i = y*8 + x;
@@ -1185,26 +1311,26 @@ public:
             }
             
             glGenerateMipmap(GL_TEXTURE_2D);
-            std::cout << "已生成默认纹理作为替代" << std::endl;
+            std::cout << "Generated default texture as fallback" << std::endl;
         }
         
-        // 释放图像数据
+        // Free image data
         stbi_image_free(data);
         
         return textureID;
     }
     
-    // 创建纹理文件夹和确保纹理存在的函数
+    // Function to create texture folder and ensure textures exist
     bool ensureTexturesExist() {
-        // 检查纹理目录是否存在，如果不存在则创建
+        // Check if texture directory exists, create if it doesn't
         if (!file_exists("textures")) {
             create_directory("textures");
-            std::cout << "已创建textures目录" << std::endl;
+            std::cout << "Created textures directory" << std::endl;
         }
         
-        // 检查每个必需的纹理文件是否存在
+        // Check if each required texture file exists
         std::vector<std::string> requiredTextures = {
-            "textures/waternormal.jpg",
+            "textures/waternormal.jpeg",
             "textures/waterDuDv.jpg",
             "textures/waterReflection.jpg",
             "textures/raindrop_glow.png",
@@ -1214,12 +1340,25 @@ public:
         bool allTexturesExist = true;
         
         for (const auto& texture : requiredTextures) {
-            if (!file_exists(texture)) {
-                std::cerr << "警告: 找不到纹理文件: " << texture << std::endl;
+            // First check in build directory
+            bool exists = file_exists(texture);
+            
+            // If not in build directory, check in project root
+            if (!exists) {
+                std::string projectRootPath = std::string("../") + texture;
+                exists = file_exists(projectRootPath);
+                
+                if (exists) {
+                    std::cout << "Found texture in project root: " << projectRootPath << std::endl;
+                }
+            }
+            
+            if (!exists) {
+                std::cerr << "Warning: Texture file not found: " << texture << std::endl;
                 allTexturesExist = false;
                 
-                // 创建一个简单的默认纹理文件
-                std::cout << "正在生成默认纹理文件: " << texture << std::endl;
+                // Create a simple default texture file
+                std::cout << "Generating default texture file: " << texture << std::endl;
                 generateDefaultTexture(texture);
             }
         }
@@ -1227,44 +1366,44 @@ public:
         return allTexturesExist;
     }
 
-    // 生成默认纹理文件
+    // Generate default texture file
     void generateDefaultTexture(const std::string& path) {
-        // 确保目录存在
+        // Ensure directory exists
         std::string parent = parent_path(path);
         if (!parent.empty() && !file_exists(parent)) {
             create_directories(parent);
         }
         
-        // 创建一个改进的8x8纹理
+        // Create an improved 8x8 texture
         const int width = 8;
         const int height = 8;
         const int channels = 4; // RGBA
         unsigned char data[width * height * channels];
         
-        // 填充数据 - 根据纹理类型使用不同的模式
+        // Fill data - use different patterns based on texture type
         for (int y = 0; y < height; y++) {
             for (int x = 0; x < width; x++) {
                 int i = (y * width + x) * channels;
                 
                 if (path.find("normal") != std::string::npos) {
-                    // 法线贴图: 随机凹凸
+                    // Normal map: random bumps
                     data[i+0] = 128 + (rand() % 40 - 20); // R
                     data[i+1] = 128 + (rand() % 40 - 20); // G
-                    data[i+2] = 200 + (rand() % 55); // B - 主要向上
+                    data[i+2] = 200 + (rand() % 55); // B - mainly upward
                     data[i+3] = 255; // A
                 } else if (path.find("DuDv") != std::string::npos) {
-                    // DuDv贴图: 随机扰动
+                    // DuDv map: random distortions
                     data[i+0] = 128 + (rand() % 30 - 15); // R
                     data[i+1] = 128 + (rand() % 30 - 15); // G
                     data[i+2] = 128; // B
                     data[i+3] = 255; // A
                 } else if (path.find("Reflection") != std::string::npos) {
-                    // 反射贴图: 夜空星星效果
+                    // Reflection map: night sky star effect
                     data[i+0] = 10 + (rand() % 20); // R
                     data[i+1] = 20 + (rand() % 30); // G
                     data[i+2] = 50 + (rand() % 40); // B
                     
-                    // 随机点缀星星
+                    // Random sprinkle of stars
                     if (rand() % 20 == 0) {
                         data[i+0] = 200 + (rand() % 55); // R
                         data[i+1] = 200 + (rand() % 55); // G
@@ -1272,26 +1411,26 @@ public:
                     }
                     data[i+3] = 255; // A
                 } else if (path.find("glow") != std::string::npos) {
-                    // 光晕贴图: 圆形渐变
+                    // Glow map: circular gradient
                     float dx = (x - width/2.0f) / (width/2.0f);
                     float dy = (y - height/2.0f) / (height/2.0f);
                     float dist = sqrt(dx*dx + dy*dy);
                     float intensity = std::max(0.0f, 1.0f - dist);
-                    intensity = intensity * intensity; // 平方使边缘更柔和
+                    intensity = intensity * intensity; // Square to make edges softer
                     
                     data[i+0] = static_cast<unsigned char>(255 * intensity); // R
                     data[i+1] = static_cast<unsigned char>(255 * intensity); // G
                     data[i+2] = static_cast<unsigned char>(255 * intensity); // B
                     data[i+3] = static_cast<unsigned char>(255 * intensity); // A
                 } else if (path.find("sky") != std::string::npos) {
-                    // 天空贴图: 夜空渐变
+                    // Sky map: night sky gradient
                     float gradient = static_cast<float>(y) / height;
                     
                     data[i+0] = static_cast<unsigned char>(5 + (1.0f - gradient) * 15); // R
                     data[i+1] = static_cast<unsigned char>(10 + (1.0f - gradient) * 20); // G
                     data[i+2] = static_cast<unsigned char>(30 + (1.0f - gradient) * 70); // B
                     
-                    // 随机添加星星
+                    // Random stars
                     if (rand() % 20 == 0) {
                         data[i+0] = 200 + (rand() % 55); // R
                         data[i+1] = 200 + (rand() % 55); // G
@@ -1300,7 +1439,7 @@ public:
                     
                     data[i+3] = 255; // A
                 } else {
-                    // 默认: 蓝色渐变
+                    // Default: blue gradient
                     float t = static_cast<float>(y) / height;
                     data[i+0] = static_cast<unsigned char>(50 * (1.0f-t)); // R
                     data[i+1] = static_cast<unsigned char>(80 * (1.0f-t) + 20); // G
@@ -1310,23 +1449,23 @@ public:
             }
         }
         
-        // 写入文件
+        // Write to file
         if (path.find(".png") != std::string::npos) {
             stbi_write_png(path.c_str(), width, height, channels, data, width * channels);
         } else {
-            stbi_write_jpg(path.c_str(), width, height, channels, data, 95); // 95是质量设置(0-100)
+            stbi_write_jpg(path.c_str(), width, height, channels, data, 95); // 95 is quality setting (0-100)
         }
     }
 
-    // 确保音频文件存在的函数
+    // Ensure audio files exist
     bool ensureAudioFilesExist() {
-        // 检查音频目录是否存在，如果不存在则创建
+        // Check if audio directory exists, create if it doesn't
         if (!file_exists("audio")) {
             create_directory("audio");
-            std::cout << "已创建audio目录" << std::endl;
+            std::cout << "Created audio directory" << std::endl;
         }
         
-        // 检查每个必需的音频文件是否存在
+        // Check if each required audio file exists
         std::vector<std::string> requiredAudioFiles = {
             "audio/raindrop_splash.wav",
             "audio/ambient_rain.mp3",
@@ -1336,11 +1475,24 @@ public:
         bool allAudioFilesExist = true;
         
         for (const auto& audioFile : requiredAudioFiles) {
-            if (!file_exists(audioFile)) {
-                std::cerr << "警告: 找不到音频文件: " << audioFile << std::endl;
+            // First check in build directory
+            bool exists = file_exists(audioFile);
+            
+            // If not in build directory, check in project root
+            if (!exists) {
+                std::string projectRootPath = std::string("../") + audioFile;
+                exists = file_exists(projectRootPath);
+                
+                if (exists) {
+                    std::cout << "Found audio file in project root: " << projectRootPath << std::endl;
+                }
+            }
+            
+            if (!exists) {
+                std::cerr << "Warning: Audio file not found: " << audioFile << std::endl;
                 allAudioFilesExist = false;
                 
-                // 创建占位符音频文件
+                // Create placeholder audio file
                 generatePlaceholderAudioFile(audioFile);
             }
         }
@@ -1348,84 +1500,106 @@ public:
         return allAudioFilesExist;
     }
 
-    // 生成占位符音频文件
+    // Generate placeholder audio file
     void generatePlaceholderAudioFile(const std::string& path) {
-        // 确保目录存在
+        // Ensure directory exists
         std::string parent = parent_path(path);
         if (!parent.empty() && !file_exists(parent)) {
             create_directories(parent);
         }
         
-        // 创建一个简单的文本文件指示音频文件缺失
+        // Create a simple text file indicating missing audio file
         std::ofstream placeholderFile(path + ".placeholder.txt");
-        placeholderFile << "这是" << path << "的占位符文件。请下载或创建实际的音频文件。";
+        placeholderFile << "This is a placeholder for " << path << ". Please download or create the actual audio file.";
         placeholderFile.close();
         
-        // 注意：由于创建实际音频文件需要复杂的音频编码库，这里只创建占位符
-        std::cout << "已为缺失的音频文件创建占位符: " << path << ".placeholder.txt" << std::endl;
-        std::cout << "请将实际的音频文件放在对应位置以启用声音" << std::endl;
+        // Note: Creating actual audio files would require complex audio encoding libraries
+        std::cout << "Created placeholder for missing audio file: " << path << ".placeholder.txt" << std::endl;
+        std::cout << "Please place actual audio files in the corresponding location to enable sound" << std::endl;
     }
     
     void run() {
+        // Main application loop
         while (!glfwWindowShouldClose(window)) {
-            // 处理时间
+            // Handle time
             float currentFrame = glfwGetTime();
             deltaTime = currentFrame - lastFrame;
             lastFrame = currentFrame;
             totalTime += deltaTime;
             
-            // 处理输入
+            // Update performance metrics
+            performanceMetrics.totalFrames++;
+            performanceMetrics.frameTimeMs = deltaTime * 1000.0f;
+            performanceMetrics.fps = 1.0f / deltaTime;
+            
+            // Smooth FPS calculation (exponential moving average)
+            if (performanceMetrics.smoothedFps == 0.0f) {
+                performanceMetrics.smoothedFps = performanceMetrics.fps;
+            } else {
+                performanceMetrics.smoothedFps = performanceMetrics.smoothedFps * 0.95f + performanceMetrics.fps * 0.05f;
+            }
+            
+            // Process input
             processInput();
             
-            // 更新
+            // Update
             update();
             
-            // 渲染
+            // Render
             render();
             
-            // 交换缓冲并轮询IO事件
+            // Render UI
+            renderUI();
+            
+            // Swap buffers and poll IO events
             glfwSwapBuffers(window);
             glfwPollEvents();
         }
     }
     
     void processInput() {
-        if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
+        if (keys[GLFW_KEY_ESCAPE])
             glfwSetWindowShouldClose(window, true);
             
-        // 相机控制
-        float cameraSpeed = 5.0f * deltaTime;
-        if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
+        // Camera movement with smooth transitions
+        float cameraSpeed = config.cameraSpeed * deltaTime;
+        
+        // Forward/backward
+        if (keys[GLFW_KEY_W])
             cameraPos += cameraSpeed * cameraFront;
-        if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
+        if (keys[GLFW_KEY_S])
             cameraPos -= cameraSpeed * cameraFront;
-        if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
+        
+        // Left/right
+        if (keys[GLFW_KEY_A])
             cameraPos -= glm::normalize(glm::cross(cameraFront, cameraUp)) * cameraSpeed;
-        if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
+        if (keys[GLFW_KEY_D])
             cameraPos += glm::normalize(glm::cross(cameraFront, cameraUp)) * cameraSpeed;
-        if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS)
+        
+        // Up/down - Changed to Space and Left Control
+        if (keys[GLFW_KEY_SPACE])
             cameraPos += cameraUp * cameraSpeed;
-        if (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS)
+        if (keys[GLFW_KEY_LEFT_CONTROL])
             cameraPos -= cameraUp * cameraSpeed;
             
-        // 相机旋转 - 方向键
+        // Camera rotation - arrow keys
         float rotateSpeed = 30.0f * deltaTime;
-        if (glfwGetKey(window, GLFW_KEY_UP) == GLFW_PRESS)
+        if (keys[GLFW_KEY_UP])
             cameraPitch += rotateSpeed;
-        if (glfwGetKey(window, GLFW_KEY_DOWN) == GLFW_PRESS)
+        if (keys[GLFW_KEY_DOWN])
             cameraPitch -= rotateSpeed;
-        if (glfwGetKey(window, GLFW_KEY_LEFT) == GLFW_PRESS)
+        if (keys[GLFW_KEY_LEFT])
             cameraYaw -= rotateSpeed;
-        if (glfwGetKey(window, GLFW_KEY_RIGHT) == GLFW_PRESS)
+        if (keys[GLFW_KEY_RIGHT])
             cameraYaw += rotateSpeed;
             
-        // 限制相机俯仰角
+        // Constrain camera pitch
         if (cameraPitch > 89.0f)
             cameraPitch = 89.0f;
         if (cameraPitch < -89.0f)
             cameraPitch = -89.0f;
             
-        // 更新相机前向量
+        // Update camera front vector
         glm::vec3 front;
         front.x = cos(glm::radians(cameraYaw)) * cos(glm::radians(cameraPitch));
         front.y = sin(glm::radians(cameraPitch));
@@ -1434,25 +1608,25 @@ public:
     }
     
     void update() {
-        // 生成新雨滴
+        // Generate new raindrops
         rainAccumulator += deltaTime;
         if (rainAccumulator >= config.updateInterval) {
             rainAccumulator = 0.0f;
             generateRaindrops();
         }
         
-        // 更新雨滴
+        // Update raindrops
         for (auto it = raindrops.begin(); it != raindrops.end();) {
             bool createRipple = it->update(deltaTime);
             
             if (createRipple) {
-                // 创建水波
+                // Create water ripple
                 WaterRipple ripple;
                 ripple.init(it->position, it->color);
                 ripples.push_back(ripple);
                 
-                // 播放水波声音(概率性的，不是每个水波都播放)
-                if (rand() % 100 < 30) { // 30%的概率播放水波声音
+                // Play water ripple sound (probabilistic, not for every ripple)
+                if (rand() % 100 < 30) { // 30% chance to play ripple sound
                     playRippleSound(ripple.position);
                 }
             }
@@ -1464,7 +1638,7 @@ public:
             }
         }
         
-        // 更新水波
+        // Update water ripples
         for (auto it = ripples.begin(); it != ripples.end();) {
             if (it->update(deltaTime)) {
                 it = ripples.erase(it);
@@ -1473,16 +1647,16 @@ public:
             }
         }
         
-        // 更新星星闪烁
+        // Update star twinkling
         for (auto& star : stars) {
             star.brightness = 0.5f + 0.5f * sin(totalTime * star.twinkleSpeed);
         }
         
-        // 更新云朵位置
+        // Update cloud positions
         for (auto& cloud : clouds) {
             cloud.position.x += cloud.speed * deltaTime;
             
-            // 如果云朵移出视野，重新放置到另一侧
+            // If cloud moves out of view, reposition on the other side
             if (cloud.position.x > POND_SIZE) {
                 cloud.position.x = -POND_SIZE;
                 cloud.position.z = -POND_SIZE/2 + static_cast<float>(rand()) / RAND_MAX * POND_SIZE;
@@ -1495,55 +1669,71 @@ public:
         int raindropsToGenerate = config.rainDensity / 20;
         
         for (int i = 0; i < raindropsToGenerate; ++i) {
-            if (rand() % 100 < 20) { // 20%的概率生成雨滴
+            if (rand() % 100 < 20) { // 20% chance to generate a raindrop
                 Raindrop raindrop;
                 
-                // 随机位置 - 在水面上方的更大区域
+                // Random position - in larger area above water surface
                 float x = -POND_SIZE/2 + static_cast<float>(rand()) / RAND_MAX * POND_SIZE;
                 float z = -POND_SIZE/2 + static_cast<float>(rand()) / RAND_MAX * POND_SIZE;
                 float y = 20.0f + static_cast<float>(rand()) / RAND_MAX * 15.0f;
                 
-                // 随机颜色
+                // Random color
                 int colorIndex = rand() % config.raindropColors.size();
                 
                 raindrop.init(glm::vec3(x, y, z), config.raindropColors[colorIndex], this);
+                
+                // Adjust size based on config
+                raindrop.size = config.minRaindropSize + 
+                    static_cast<float>(rand()) / RAND_MAX * (config.maxRaindropSize - config.minRaindropSize);
+                
+                // Adjust velocity based on config
+                float speedFactor = config.minRaindropSpeed + 
+                    static_cast<float>(rand()) / RAND_MAX * (config.maxRaindropSpeed - config.minRaindropSpeed);
+                raindrop.velocity.y = -speedFactor;
+                
                 raindrops.push_back(raindrop);
             }
         }
     }
     
     void render() {
-        // 清空缓冲
-        glClearColor(0.01f, 0.02f, 0.05f, 1.0f); // 更深的夜空颜色
+        // Clear buffers
+        glClearColor(0.01f, 0.02f, 0.05f, 1.0f); // Deeper night sky color
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         
-        // 视图/投影矩阵
+        // View/projection matrices
         glm::mat4 view = glm::lookAt(cameraPos, cameraPos + cameraFront, cameraUp);
         glm::mat4 projection = glm::perspective(glm::radians(45.0f), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 1000.0f);
         
-        // 渲染天空
+        // Render sky
         renderSky(view, projection);
         
-        // 渲染月亮
+        // Render moon
         renderMoon(view, projection);
         
-        // 渲染星星
+        // Render stars
         renderStars(view, projection);
         
-        // 渲染水面
+        // Render water surface
         renderWater(view, projection);
+        
+        // Render raindrops
+        renderRaindrops(view, projection);
+        
+        // Render water ripples
+        renderRipples(view, projection);
     }
 
     void renderWater(const glm::mat4& view, const glm::mat4& projection) {
         waterShader->use();
         
-        // 设置变换矩阵
+        // Set transformation matrices
         glm::mat4 model = glm::mat4(1.0f);
         waterShader->setMat4("model", model);
         waterShader->setMat4("view", view);
         waterShader->setMat4("projection", projection);
         
-        // 设置纹理
+        // Set textures
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, waterNormalTexture);
         waterShader->setInt("normalMap", 0);
@@ -1556,21 +1746,24 @@ public:
         glBindTexture(GL_TEXTURE_2D, waterReflectionTexture);
         waterShader->setInt("reflectionMap", 2);
         
-        // 设置水面属性
-        waterShader->setFloat("time", totalTime); // 使用总时间使水面动起来
+        // Set water properties
+        waterShader->setFloat("time", totalTime); // Use total time to animate water
         waterShader->setVec3("viewPos", cameraPos);
-        waterShader->setFloat("waveStrength", 0.05f + 0.02f * sin(totalTime * 0.5f)); // 波浪强度随时间变化
-        waterShader->setFloat("waveSpeed", 0.8f); // 波浪速度
-        waterShader->setFloat("waterDepth", 0.3f + 0.05f * sin(totalTime * 0.3f)); // 水深度
         
-        // 绘制水面
+        // Set wave properties with additional parameters for better control
+        float waveStrength = config.waveStrength * (0.05f + 0.02f * sin(totalTime * 0.5f)); // Wave strength with time variation
+        waterShader->setFloat("waveStrength", waveStrength);
+        waterShader->setFloat("waveSpeed", 0.8f); // Wave speed
+        waterShader->setFloat("waterDepth", 0.3f + 0.05f * sin(totalTime * 0.3f)); // Water depth
+        
+        // Draw water surface
         glBindVertexArray(waterVAO);
         glDrawArrays(GL_TRIANGLES, 0, 6);
         glBindVertexArray(0);
     }
     
     void renderRaindrops(const glm::mat4& view, const glm::mat4& projection) {
-        // 先渲染雨滴轨迹
+        // First render raindrop trails
         trailShader->use();
         trailShader->setMat4("view", view);
         trailShader->setMat4("projection", projection);
@@ -1580,11 +1773,11 @@ public:
             if (!raindrop.visible || raindrop.state > 0 || raindrop.velocity.y > -2.0f)
                 continue;
                 
-            // 设置模型矩阵 - 根据雨滴速度方向缩放和旋转轨迹
+            // Set model matrix - scale and rotate trail based on raindrop velocity direction
             glm::mat4 model = glm::mat4(1.0f);
             model = glm::translate(model, raindrop.position);
             
-            // 根据雨滴速度确定轨迹方向
+            // Determine trail direction based on raindrop velocity
             glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f);
             glm::vec3 direction = glm::normalize(-raindrop.velocity);
             float angleY = atan2(direction.x, direction.z);
@@ -1593,55 +1786,55 @@ public:
             model = glm::rotate(model, angleY, glm::vec3(0.0f, 1.0f, 0.0f));
             model = glm::rotate(model, angleX, glm::vec3(1.0f, 0.0f, 0.0f));
             
-            // 根据速度和大小缩放轨迹
+            // Scale trail based on velocity and size
             float trailLength = glm::length(raindrop.velocity) * raindrop.trail * 0.5f;
             model = glm::scale(model, glm::vec3(raindrop.size * 0.4f, trailLength, raindrop.size * 0.4f));
             
             trailShader->setMat4("model", model);
             
-            // 设置轨迹颜色 - 稍微透明
+            // Set trail color - slightly transparent
             glm::vec3 trailColor = raindrop.color * 0.9f;
             float trailOpacity = 0.3f * raindrop.brightness;
             trailShader->setVec3("rippleColor", trailColor);
             trailShader->setFloat("opacity", trailOpacity);
             
-            // 绘制轨迹
+            // Draw trail
             glDrawArrays(GL_TRIANGLES, 0, 3);
         }
         
-        // 然后渲染雨滴点
+        // Then render raindrop points
         raindropShader->use();
         
-        // 设置变换矩阵
+        // Set transformation matrices
         raindropShader->setMat4("view", view);
         raindropShader->setMat4("projection", projection);
         
-        // 启用点大小
+        // Enable point size
         glEnable(GL_PROGRAM_POINT_SIZE);
         
-        // 遍历所有雨滴
+        // Loop through all raindrops
         glBindVertexArray(raindropVAO);
         for (const auto& raindrop : raindrops) {
             if (!raindrop.visible || raindrop.state > 0)
                 continue;
                 
-            // 设置模型矩阵
+            // Set model matrix
             glm::mat4 model = glm::mat4(1.0f);
             model = glm::translate(model, raindrop.position);
             raindropShader->setMat4("model", model);
             
-            // 设置雨滴属性 - 大小随距离变化
+            // Set raindrop properties - size varies with distance
             float distanceFactor = glm::length(raindrop.position - cameraPos);
             float sizeScale = std::max(0.5f, 30.0f / distanceFactor);
             
             raindropShader->setVec3("raindropColor", raindrop.color * raindrop.brightness);
-            raindropShader->setFloat("raindropSize", raindrop.size * 15.0f * sizeScale); // 放大点大小
+            raindropShader->setFloat("raindropSize", raindrop.size * 15.0f * sizeScale); // Magnify point size
             
-            // 添加闪烁效果
+            // Add twinkle effect
             float twinkle = 0.7f + 0.3f * sin(totalTime * raindrop.twinkleSpeed);
             raindropShader->setFloat("brightness", raindrop.brightness * twinkle);
             
-            // 绘制雨滴
+            // Draw raindrop
             glDrawArrays(GL_POINTS, 0, 1);
         }
         glBindVertexArray(0);
@@ -1652,72 +1845,72 @@ public:
     void renderRipples(const glm::mat4& view, const glm::mat4& projection) {
         rippleShader->use();
         
-        // 设置变换矩阵
+        // Set transformation matrices
         rippleShader->setMat4("view", view);
         rippleShader->setMat4("projection", projection);
         
-        // 遍历所有水波
+        // Loop through all water ripples
         glBindVertexArray(rippleVAO);
         for (const auto& ripple : ripples) {
-            // 设置模型矩阵
+            // Set model matrix
             glm::mat4 model = glm::mat4(1.0f);
             model = glm::translate(model, ripple.position);
             
-            // 随时间轻微旋转水波
+            // Slightly rotate ripple over time
             model = glm::rotate(model, totalTime * 0.1f, glm::vec3(0.0f, 1.0f, 0.0f));
             
-            // 根据当前厚度稍微缩放不同的环
+            // Scale slightly differently based on current thickness
             float thicknessFactor = ripple.getCurrentThickness() / 0.2f;
             model = glm::scale(model, glm::vec3(ripple.radius * (1.0f + 0.02f * thicknessFactor)));
             
             rippleShader->setMat4("model", model);
             
-            // 设置水波属性 - 颜色随时间和厚度变化
+            // Set ripple properties - color varies with time and thickness
             float colorPulse = 0.9f + 0.1f * sin(totalTime * ripple.pulseFrequency);
             glm::vec3 pulsingColor = ripple.color * colorPulse;
             
             rippleShader->setVec3("rippleColor", pulsingColor);
             rippleShader->setFloat("opacity", ripple.opacity);
             
-            // 绘制水波 - 三角形数量取决于环数和节点数
+            // Draw ripple - triangle count depends on ring count and segment count
             glDrawArrays(GL_TRIANGLES, 0, 6 * 128 * config.rippleRings);
         }
         glBindVertexArray(0);
     }
     
-    // 新增：渲染天空
+    // New: render sky
     void renderSky(const glm::mat4& view, const glm::mat4& projection) {
         skyShader->use();
         
-        // 设置变换矩阵 - 使天空跟随相机移动
+        // Set transformation matrices - make sky follow camera
         glm::mat4 model = glm::mat4(1.0f);
         model = glm::translate(model, glm::vec3(cameraPos.x, 0.0f, cameraPos.z));
         skyShader->setMat4("model", model);
         skyShader->setMat4("view", view);
         skyShader->setMat4("projection", projection);
         
-        // 设置天空属性
-        skyShader->setFloat("time", totalTime * 0.01f); // 非常缓慢的移动
+        // Set sky properties
+        skyShader->setFloat("time", totalTime * 0.01f); // Very slow movement
         skyShader->setVec3("viewPos", cameraPos);
         
-        // 设置纹理
+        // Set texture
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, skyTexture);
-        skyShader->setInt("normalMap", 0); // 使用天空纹理代替法线图
+        skyShader->setInt("normalMap", 0); // Use sky texture instead of normal map
         
-        // 绘制天空
-        glDepthMask(GL_FALSE); // 禁用深度写入，确保天空在后面
+        // Draw sky
+        glDepthMask(GL_FALSE); // Disable depth write, ensure sky is in background
         glBindVertexArray(skyVAO);
-        glDrawArrays(GL_TRIANGLES, 0, 32 * 16 * 6); // 天空穹顶的三角形数量
+        glDrawArrays(GL_TRIANGLES, 0, 32 * 16 * 6); // Number of triangles in sky dome
         glBindVertexArray(0);
-        glDepthMask(GL_TRUE); // 重新启用深度写入
+        glDepthMask(GL_TRUE); // Re-enable depth write
     }
     
-    // 新增：渲染月亮
+    // New: render moon
     void renderMoon(const glm::mat4& view, const glm::mat4& projection) {
         moonShader->use();
         
-        // 设置月亮位置
+        // Set moon position
         glm::mat4 model = glm::mat4(1.0f);
         model = glm::translate(model, glm::vec3(MOON_X, MOON_Y, -100.0f));
         model = glm::scale(model, glm::vec3(MOON_SIZE));
@@ -1725,25 +1918,25 @@ public:
         moonShader->setMat4("view", view);
         moonShader->setMat4("projection", projection);
         
-        // 设置月亮颜色 - 淡黄色
+        // Set moon color - pale yellow
         glm::vec3 moonColor(0.98f, 0.97f, 0.85f);
         moonShader->setVec3("raindropColor", moonColor);
-        moonShader->setFloat("raindropSize", 1.0f); // 不需要点大小，因为我们绘制的是三角形
+        moonShader->setFloat("raindropSize", 1.0f); // Don't need point size, drawing triangles
         moonShader->setFloat("brightness", 1.0f);
         
-        // 绘制月亮
+        // Draw moon
         glBindVertexArray(moonVAO);
-        glDrawArrays(GL_TRIANGLE_FAN, 0, 66); // 圆盘的顶点数量
+        glDrawArrays(GL_TRIANGLE_FAN, 0, 66); // Vertex count of disc
         glBindVertexArray(0);
         
-        // 绘制月晕
+        // Draw moon halo
         float haloSize = MOON_SIZE * 1.5f;
         model = glm::mat4(1.0f);
         model = glm::translate(model, glm::vec3(MOON_X, MOON_Y, -100.0f));
         model = glm::scale(model, glm::vec3(haloSize));
         moonShader->setMat4("model", model);
         
-        // 设置月晕颜色 - 透明淡蓝色
+        // Set moon halo color - transparent light blue
         glm::vec3 haloColor(0.6f, 0.7f, 0.9f);
         moonShader->setVec3("raindropColor", haloColor);
         moonShader->setFloat("brightness", 0.4f);
@@ -1753,33 +1946,33 @@ public:
         glBindVertexArray(0);
     }
     
-    // 新增：渲染星星
+    // New: render stars
     void renderStars(const glm::mat4& view, const glm::mat4& projection) {
         starShader->use();
         
-        // 设置变换矩阵
+        // Set transformation matrices
         starShader->setMat4("view", view);
         starShader->setMat4("projection", projection);
         
-        // 启用点大小
+        // Enable point size
         glEnable(GL_PROGRAM_POINT_SIZE);
         
-        // 绘制所有星星
-        glBindVertexArray(raindropVAO); // 复用雨滴VAO
+        // Draw all stars
+        glBindVertexArray(raindropVAO); // Reuse raindrop VAO
         
         for (const auto& star : stars) {
-            // 设置模型矩阵
+            // Set model matrix
             glm::mat4 model = glm::mat4(1.0f);
             model = glm::translate(model, star.position);
             starShader->setMat4("model", model);
             
-            // 设置星星属性
-            glm::vec3 starColor(0.9f, 0.9f, 1.0f); // 白色偏蓝
+            // Set star properties
+            glm::vec3 starColor(0.9f, 0.9f, 1.0f); // White with slight blue tint
             starShader->setVec3("raindropColor", starColor);
             starShader->setFloat("raindropSize", star.size * 2.0f);
             starShader->setFloat("brightness", star.brightness);
             
-            // 绘制星星
+            // Draw star
             glDrawArrays(GL_POINTS, 0, 1);
         }
         
@@ -1788,122 +1981,165 @@ public:
     }
     
     void renderUI() {
-        // 开始ImGui帧
+        // Start ImGui frame
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
         
-        // 创建控制面板
-        ImGui::Begin("控制面板");
+        // Create control panel
+        ImGui::Begin("Control Panel");
         
-        ImGui::Text("池塘夜雨彩色雨滴模拟");
+        ImGui::Text("Colorful Rain Simulation");
         ImGui::Separator();
         
-        // 视觉效果控制
-        if (ImGui::CollapsingHeader("雨滴设置")) {
-            ImGui::SliderInt("雨滴密度", &config.rainDensity, 10, 300);
-            ImGui::SliderFloat("雨滴最小大小", &config.minRaindropSize, 0.05f, 0.3f);
-            ImGui::SliderFloat("雨滴最大大小", &config.maxRaindropSize, 0.1f, 0.5f);
-            ImGui::SliderFloat("雨滴最小速度", &config.minRaindropSpeed, 1.0f, 5.0f);
-            ImGui::SliderFloat("雨滴最大速度", &config.maxRaindropSpeed, 3.0f, 10.0f);
+        // Stats display
+        char fpsText[32];
+        sprintf(fpsText, "FPS: %.1f", performanceMetrics.smoothedFps);
+        ImGui::Text(fpsText);
+        
+        ImGui::Text("Raindrops: %lu", raindrops.size());
+        ImGui::Text("Ripples: %lu", ripples.size());
+        
+        ImGui::Separator();
+        
+        // Rain settings
+        if (ImGui::CollapsingHeader("Rain Settings")) {
+            ImGui::SliderInt("Rain Density", &config.rainDensity, 10, 500);
+            ImGui::SliderFloat("Min Raindrop Size", &config.minRaindropSize, 0.05f, 0.3f);
+            ImGui::SliderFloat("Max Raindrop Size", &config.maxRaindropSize, 0.1f, 0.5f);
+            ImGui::SliderFloat("Min Raindrop Speed", &config.minRaindropSpeed, 1.0f, 5.0f);
+            ImGui::SliderFloat("Max Raindrop Speed", &config.maxRaindropSpeed, 3.0f, 10.0f);
+            
+            // Color editing
+            if (ImGui::TreeNode("Raindrop Colors")) {
+                for (int i = 0; i < config.raindropColors.size(); i++) {
+                    char colorName[32];
+                    sprintf(colorName, "Color %d", i+1);
+                    float color[3] = {
+                        config.raindropColors[i].r,
+                        config.raindropColors[i].g,
+                        config.raindropColors[i].b
+                    };
+                    if (ImGui::ColorEdit3(colorName, color)) {
+                        config.raindropColors[i] = glm::vec3(color[0], color[1], color[2]);
+                    }
+                }
+                ImGui::TreePop();
+            }
         }
         
-        if (ImGui::CollapsingHeader("水波设置")) {
-            ImGui::SliderFloat("最大水圈大小", &config.maxRippleSize, 5.0f, 30.0f);
-            ImGui::SliderInt("水波环数", &config.rippleRings, 1, 5);
-            ImGui::SliderFloat("水波更新间隔", &config.updateInterval, 0.01f, 0.1f);
+        // Water settings
+        if (ImGui::CollapsingHeader("Water Settings")) {
+            ImGui::SliderFloat("Wave Strength", &config.waveStrength, 0.0f, 1.0f);
+            ImGui::SliderFloat("Max Ripple Size", &config.maxRippleSize, 5.0f, 30.0f);
+            ImGui::SliderInt("Ripple Rings", &config.rippleRings, 1, 5);
+            ImGui::SliderFloat("Update Interval", &config.updateInterval, 0.01f, 0.1f);
+            
+            // Ripple color editing
+            if (ImGui::TreeNode("Ripple Colors")) {
+                for (int i = 0; i < config.rippleColors.size(); i++) {
+                    char colorName[32];
+                    sprintf(colorName, "Color %d", i+1);
+                    float color[3] = {
+                        config.rippleColors[i].r,
+                        config.rippleColors[i].g,
+                        config.rippleColors[i].b
+                    };
+                    if (ImGui::ColorEdit3(colorName, color)) {
+                        config.rippleColors[i] = glm::vec3(color[0], color[1], color[2]);
+                    }
+                }
+                ImGui::TreePop();
+            }
         }
         
-        // 音频控制
-        if (ImGui::CollapsingHeader("音频设置")) {
-            bool soundEnabledChanged = ImGui::Checkbox("启用声音", &audioConfig.soundEnabled);
+        // Camera settings
+        if (ImGui::CollapsingHeader("Camera Settings")) {
+            ImGui::SliderFloat("Camera Speed", &config.cameraSpeed, 1.0f, 30.0f);
+            ImGui::Text("Controls:");
+            ImGui::BulletText("WASD: Move camera");
+            ImGui::BulletText("Space/Ctrl: Up/Down");
+            ImGui::BulletText("Arrow Keys: Rotate view");
             
-            ImGui::SliderFloat("主音量", &audioConfig.masterVolume, 0.0f, 1.0f);
-            ImGui::SliderFloat("雨滴音量", &audioConfig.raindropVolume, 0.0f, 1.0f);
-            ImGui::SliderFloat("环境雨声音量", &audioConfig.ambientVolume, 0.0f, 1.0f);
-            ImGui::SliderFloat("水波音量", &audioConfig.rippleVolume, 0.0f, 1.0f);
+            ImGui::Separator();
             
-            // 当音频设置改变时更新SDL音频设置
+            // Current camera info
+            ImGui::Text("Camera Position: (%.1f, %.1f, %.1f)", cameraPos.x, cameraPos.y, cameraPos.z);
+            ImGui::Text("Look Direction: (%.1f, %.1f, %.1f)", cameraFront.x, cameraFront.y, cameraFront.z);
+        }
+        
+        // Audio settings
+        if (ImGui::CollapsingHeader("Audio Settings")) {
+            bool soundEnabledChanged = ImGui::Checkbox("Enable Sound", &audioConfig.soundEnabled);
+            
+            ImGui::SliderFloat("Master Volume", &audioConfig.masterVolume, 0.0f, 1.0f);
+            ImGui::SliderFloat("Raindrop Volume", &audioConfig.raindropVolume, 0.0f, 1.0f);
+            ImGui::SliderFloat("Ambient Rain Volume", &audioConfig.ambientVolume, 0.0f, 1.0f);
+            ImGui::SliderFloat("Ripple Volume", &audioConfig.rippleVolume, 0.0f, 1.0f);
+            
+            // Update SDL audio settings when changed
             if (ImGui::IsItemEdited() || soundEnabledChanged) {
                 updateAudioSettings();
             }
         }
         
-        if (ImGui::CollapsingHeader("相机控制")) {
-            ImGui::Text("W/S/A/D: 移动相机");
-            ImGui::Text("空格/Shift: 上升/下降");
-            ImGui::Text("方向键: 旋转视角");
-            
-            ImGui::SliderFloat("相机X", &cameraPos.x, -100.0f, 100.0f);
-            ImGui::SliderFloat("相机Y", &cameraPos.y, 1.0f, 50.0f);
-            ImGui::SliderFloat("相机Z", &cameraPos.z, -100.0f, 100.0f);
-            ImGui::SliderFloat("俯仰角", &cameraPitch, -89.0f, 89.0f);
-            ImGui::SliderFloat("偏航角", &cameraYaw, -180.0f, 180.0f);
-        }
-        
-        ImGui::Separator();
-        ImGui::Text("统计信息");
-        ImGui::Text("FPS: %.1f", 1.0f / deltaTime);
-        ImGui::Text("雨滴数量: %lu", raindrops.size());
-        ImGui::Text("水波数量: %lu", ripples.size());
-        
         ImGui::End();
         
-        // 渲染ImGui
+        // Render ImGui
         ImGui::Render();
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
     }
 };
 
-// 雨滴类的update方法 - 使用RainSimulation的playRaindropSound方法
+// Raindrop::update method - uses RainSimulation's playRaindropSound method
 bool Raindrop::update(float deltaTime) {
     lifetime += deltaTime;
     
-    // 随机闪烁，使用亮度而不是可见性
+    // Random twinkling, using brightness rather than visibility
     brightness = 0.7f + 0.3f * sin(lifetime * twinkleSpeed + position.x * 0.1f);
     
-    if (state == 0) { // 下落状态
+    if (state == 0) { // Falling state
         position += velocity * deltaTime;
         
-        // 添加一些随机运动 - 雨滴轻微摆动
+        // Add some random motion - raindrop slight swaying
         float swayAmount = 0.05f;
         velocity.x += (cos(lifetime * 3.0f + position.z) * swayAmount - velocity.x * 0.1f) * deltaTime;
         velocity.z += (sin(lifetime * 2.5f + position.x) * swayAmount - velocity.z * 0.1f) * deltaTime;
         
-        // 速度随时间略微增加 - 模拟重力
+        // Velocity increases slightly over time - simulating gravity
         velocity.y -= 0.2f * deltaTime;
         
-        // 检查是否碰到水面
+        // Check if hit water surface
         if (position.y <= WATER_HEIGHT) {
-            state = 1; // 入水状态
+            state = 1; // Water entry state
             visible = false;
             
-            // 播放入水声音
+            // Play water entry sound
             if (simulation) {
                 simulation->playRaindropSound(position);
             }
             
-            return true; // 告知需要创建波纹
+            return true; // Tell to create ripple
         }
-    } else if (state == 1) { // 入水状态
-        // 如果在水面下，逐渐消失
+    } else if (state == 1) { // Water entry state
+        // If below water surface, gradually fade
         brightness -= deltaTime * 2.0f;
         if (brightness <= 0.0f) {
-            state = 2; // 消失状态
+            state = 2; // Disappeared state
         }
     }
     
     return false;
 }
 
-// 写入着色器文件
+// Write shader files
 void writeShaderFiles() {
-    // 创建着色器目录
+    // Create shader directory
     if (!file_exists("shaders")) {
         create_directory("shaders");
     }
     
-    // 顶点着色器 - 水面 (增强版)
+    // Vertex shader - water (enhanced)
     const char* waterVertexShader = R"(
 #version 330 core
 layout (location = 0) in vec3 aPos;
@@ -1923,7 +2159,7 @@ uniform float waveSpeed;
 void main() {
     FragPos = vec3(model * vec4(aPos, 1.0));
     
-    // 多层波浪效果
+    // Multi-layer wave effect
     vec3 pos = aPos;
     float wave1 = sin(pos.x * 0.1 + time * waveSpeed) * cos(pos.z * 0.1 + time * waveSpeed * 0.8) * waveStrength;
     float wave2 = sin(pos.x * 0.2 + time * waveSpeed * 1.2) * cos(pos.z * 0.15 + time * waveSpeed) * waveStrength * 0.5;
@@ -1934,7 +2170,7 @@ void main() {
     gl_Position = projection * view * model * vec4(pos, 1.0);
     TexCoords = aTexCoords;
     
-    // 波面法线计算 (基于波浪导数)
+    // Wave surface normal calculation (based on wave derivatives)
     float dx1 = 0.1 * cos(pos.x * 0.1 + time * waveSpeed) * cos(pos.z * 0.1 + time * waveSpeed * 0.8) * waveStrength;
     float dz1 = 0.1 * sin(pos.x * 0.1 + time * waveSpeed) * -sin(pos.z * 0.1 + time * waveSpeed * 0.8) * waveStrength;
     
@@ -1947,7 +2183,7 @@ void main() {
 }
 )";
 
-    // 片段着色器 - 水面 (增强版)
+    // Fragment shader - water (enhanced)
     const char* waterFragmentShader = R"(
 #version 330 core
 out vec4 FragColor;
@@ -1965,33 +2201,33 @@ uniform float waterDepth;
 uniform float waveStrength;
 
 void main() {
-    // 生成扰动纹理坐标
+    // Generate distorted texture coordinates
     vec2 distortedTexCoords = vec2(
         TexCoords.x + sin(TexCoords.y * 10.0 + time) * 0.01,
         TexCoords.y + sin(TexCoords.x * 10.0 + time * 0.8) * 0.01
     );
     
-    // 在没有法线贴图的情况下生成动态法线
+    // Generate dynamic normal without normal map
     vec3 normal = normalize(Normal);
     
-    // 动态变化法线以模拟水面微小波动
+    // Dynamic changing normal to simulate small water ripples
     normal.x += sin(TexCoords.x * 30.0 + time * 3.0) * sin(TexCoords.y * 20.0 + time * 2.0) * 0.03;
     normal.z += cos(TexCoords.x * 25.0 + time * 2.5) * cos(TexCoords.y * 35.0 + time * 3.5) * 0.03;
     normal = normalize(normal);
     
-    // 环境光
+    // Ambient light
     vec3 ambient = vec3(0.05, 0.1, 0.2);
     
-    // 漫反射 - 使用多个光源
+    // Diffuse - use multiple light sources
     vec3 result = ambient;
     
-    // 主光源 - 月光
+    // Main light source - moonlight
     {
         vec3 lightDir = normalize(vec3(0.3, 1.0, 0.1));
         float diff = max(dot(normal, lightDir), 0.0);
-        vec3 diffuse = diff * vec3(0.6, 0.7, 0.9) * 0.3; // 柔和的蓝白色月光
+        vec3 diffuse = diff * vec3(0.6, 0.7, 0.9) * 0.3; // Soft blue-white moonlight
         
-        // 反射
+        // Reflection
         vec3 viewDir = normalize(viewPos - FragPos);
         vec3 reflectDir = reflect(-lightDir, normal);
         float spec = pow(max(dot(viewDir, reflectDir), 0.0), 32.0);
@@ -2000,39 +2236,39 @@ void main() {
         result += diffuse + specular;
     }
     
-    // 第二光源 - 环境光
+    // Second light source - ambient
     {
         vec3 lightDir = normalize(vec3(-0.5, 0.5, 0.2));
         float diff = max(dot(normal, lightDir), 0.0);
-        vec3 diffuse = diff * vec3(0.1, 0.2, 0.4) * 0.1; // 微弱的蓝色环境光
+        vec3 diffuse = diff * vec3(0.1, 0.2, 0.4) * 0.1; // Slight blue ambient light
         
         result += diffuse;
     }
     
-    // 水面颜色 - 混合深浅色调
-    vec3 waterColorDeep = vec3(0.0, 0.05, 0.15); // 深水
-    vec3 waterColorShallow = vec3(0.1, 0.3, 0.6); // 浅水
+    // Water color - blend deep and shallow tones
+    vec3 waterColorDeep = vec3(0.0, 0.05, 0.15); // Deep water
+    vec3 waterColorShallow = vec3(0.1, 0.3, 0.6); // Shallow water
     
-    // 视角越垂直看水面，越能看到水底
+    // More vertical view angle shows more of the bottom
     float fresnelFactor = pow(1.0 - max(dot(normal, normalize(viewPos - FragPos)), 0.0), 3.0);
     
-    // 根据视角和波浪动态混合深浅水颜色
+    // Dynamically blend deep/shallow water colors based on view and waves
     vec3 waterColor = mix(waterColorDeep, waterColorShallow, 
                           fresnelFactor * 0.5 + 0.2 * sin(time * 0.1) + 0.3);
     
-    // 倒影效果 - 在没有倒影纹理的情况下生成模拟倒影
+    // Reflection effect - generate simulated reflection without reflection texture
     vec3 reflection = vec3(0.0);
     
-    // 生成模拟的夜空倒影
+    // Generate simulated night sky reflection
     float skyFresnel = pow(1.0 - max(dot(normal, normalize(viewPos - FragPos)), 0.0), 2.0);
-    vec3 skyColor = vec3(0.0, 0.02, 0.1); // 深蓝色夜空
+    vec3 skyColor = vec3(0.0, 0.02, 0.1); // Deep blue night sky
     
-    // 添加模拟的月光倒影和星星
-    vec2 moonPos = vec2(0.7, 0.8); // 月亮在倒影中的位置
+    // Add simulated moonlight reflection and stars
+    vec2 moonPos = vec2(0.7, 0.8); // Moon position in reflection
     float moonDist = distance(distortedTexCoords, moonPos);
     vec3 moonColor = vec3(0.8, 0.8, 0.6) * smoothstep(0.15, 0.0, moonDist) * 0.8;
     
-    // 随机星星
+    // Random stars
     float stars = 0.0;
     if (fract(sin(distortedTexCoords.x * 100.0) * sin(distortedTexCoords.y * 100.0) * 43758.5453) > 0.996) {
         stars = 0.5 + 0.5 * sin(time * 2.0 + distortedTexCoords.x * 10.0);
@@ -2040,22 +2276,22 @@ void main() {
     
     reflection = skyColor + moonColor + stars * vec3(0.8, 0.8, 1.0);
     
-    // 最终混合所有组件
+    // Final blend of all components
     result = mix(result, reflection, skyFresnel * 0.5);
     result = mix(waterColor, result, 0.5);
     
-    // 添加波纹边缘高光
+    // Add ripple edge highlight
     float edgeHighlight = pow(1.0 - abs(dot(normal, vec3(0.0, 1.0, 0.0))), 8.0) * 0.5;
     result += vec3(edgeHighlight);
     
-    // 水面半透明效果
+    // Semi-transparent water effect
     float alpha = 0.8 + edgeHighlight * 0.2;
     
     FragColor = vec4(result, alpha);
 }
 )";
 
-    // 顶点着色器 - 雨滴 (增强版)
+    // Vertex shader - raindrop (enhanced)
     const char* raindropVertexShader = R"(
 #version 330 core
 layout (location = 0) in vec3 aPos;
@@ -2072,13 +2308,13 @@ out float Brightness;
 
 void main() {
     gl_Position = projection * view * model * vec4(aPos, 1.0);
-    gl_PointSize = raindropSize / gl_Position.w; // 根据距离调整大小
+    gl_PointSize = raindropSize / gl_Position.w; // Size adjusted by distance
     Color = raindropColor;
     Brightness = brightness;
 }
 )";
 
-    // 片段着色器 - 雨滴 (增强版)
+    // Fragment shader - raindrop (enhanced)
     const char* raindropFragmentShader = R"(
 #version 330 core
 out vec4 FragColor;
@@ -2087,27 +2323,27 @@ in vec3 Color;
 in float Brightness;
 
 void main() {
-    // 创建圆形点
+    // Create circular point
     vec2 circCoord = 2.0 * gl_PointCoord - 1.0;
     float dist = length(circCoord);
     
-    // 平滑圆形边缘
+    // Smooth circular edge
     float alpha = 1.0 - smoothstep(0.8, 1.0, dist);
     
-    // 淡出边缘并提亮中心
+    // Fade edge and brighten center
     if (dist > 1.0) {
         discard;
     }
     
-    // 创建雨滴光晕效果
+    // Create raindrop glow effect
     float innerGlow = 1.0 - dist * dist;
     float outerGlow = 0.5 * (1.0 - smoothstep(0.5, 1.0, dist));
     
-    // 根据雨滴大小调整亮度和透明度
+    // Adjust brightness and transparency based on raindrop size
     vec3 finalColor = Color * Brightness * (0.7 + 0.6 * innerGlow);
     float finalAlpha = alpha * (0.6 + 0.4 * innerGlow);
     
-    // 添加轻微的内部结构
+    // Add slight internal structure
     float detail = 0.1 * sin(circCoord.x * 10.0) * sin(circCoord.y * 10.0);
     finalColor += detail * innerGlow * Brightness;
     
@@ -2115,7 +2351,7 @@ void main() {
 }
 )";
 
-    // 顶点着色器 - 水波 (增强版)
+    // Vertex shader - water ripple (enhanced)
     const char* rippleVertexShader = R"(
 #version 330 core
 layout (location = 0) in vec3 aPos;
@@ -2132,7 +2368,7 @@ void main() {
 }
 )";
 
-    // 片段着色器 - 水波 (增强版)
+    // Fragment shader - water ripple (enhanced)
     const char* rippleFragmentShader = R"(
 #version 330 core
 out vec4 FragColor;
@@ -2143,23 +2379,23 @@ uniform vec3 rippleColor;
 uniform float opacity;
 
 void main() {
-    // 模拟水波的闪光和透明度变化
+    // Simulate water ripple flash and transparency changes
     vec3 color = rippleColor;
     
-    // 使用片段位置来计算水波的径向位置
-    vec3 center = vec3(0.0, 0.0, 0.0); // 水波中心在模型空间
+    // Use fragment position to calculate ripple's radial position
+    vec3 center = vec3(0.0, 0.0, 0.0); // Ripple center in model space
     vec2 fromCenter = vec2(FragPos.x, FragPos.z);
     float dist = length(fromCenter);
     
-    // 添加纹理变化 - 让水波看起来更细致
+    // Add texture variation - make ripple more detailed
     float detail = sin(dist * 20.0) * 0.1;
     color += detail * rippleColor;
     
-    // 平滑边缘
+    // Smooth edges
     float edgeFade = smoothstep(0.9, 1.0, dist);
     float innerFade = smoothstep(0.0, 0.2, dist);
     
-    // 最终颜色和透明度
+    // Final color and transparency
     color = color * (1.0 - edgeFade) * innerFade;
     float alpha = opacity * (1.0 - edgeFade) * innerFade;
     
@@ -2167,7 +2403,7 @@ void main() {
 }
 )";
     
-    // 水面着色器
+    // Water shaders
     std::ofstream waterVert("shaders/water.vert");
     waterVert << waterVertexShader;
     waterVert.close();
@@ -2176,7 +2412,7 @@ void main() {
     waterFrag << waterFragmentShader;
     waterFrag.close();
     
-    // 雨滴着色器
+    // Raindrop shaders
     std::ofstream raindropVert("shaders/raindrop.vert");
     raindropVert << raindropVertexShader;
     raindropVert.close();
@@ -2185,7 +2421,7 @@ void main() {
     raindropFrag << raindropFragmentShader;
     raindropFrag.close();
     
-    // 水波着色器
+    // Water ripple shaders
     std::ofstream rippleVert("shaders/ripple.vert");
     rippleVert << rippleVertexShader;
     rippleVert.close();
@@ -2194,18 +2430,18 @@ void main() {
     rippleFrag << rippleFragmentShader;
     rippleFrag.close();
     
-    // 创建纹理目录
+    // Create texture directory
     if (!file_exists("textures")) {
         create_directory("textures");
     }
     
-    // 创建音频目录
+    // Create audio directory
     if (!file_exists("audio")) {
         create_directory("audio");
     }
 }
 
-// 使用与SDL兼容的main函数
+// Use SDL-compatible main function
 #ifdef __WINDOWS__
 int WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nShowCmd) {
 #else
@@ -2213,25 +2449,25 @@ int main(int argc, char* argv[]) {
 #endif
 
     setConsoleCodePage();
-    // 初始化SDL
+    // Initialize SDL
     if (SDL_Init(SDL_INIT_AUDIO) < 0) {
-        std::cerr << "无法初始化SDL: " << SDL_GetError() << std::endl;
+        std::cerr << "Failed to initialize SDL: " << SDL_GetError() << std::endl;
         return 1;
     }
     
-    // 写入着色器文件
+    // Write shader files
     writeShaderFiles();
     
-    // 设置随机数种子
+    // Set random seed
     srand(static_cast<unsigned int>(time(nullptr)));
     
-    // 创建并运行模拟
+    // Create and run simulation
     RainSimulation simulation;
     if (simulation.init()) {
         simulation.run();
     }
     
-    // 退出前清理SDL
+    // Clean up SDL before exit
     SDL_Quit();
     
     return 0;

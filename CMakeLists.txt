@@ -442,7 +442,7 @@ endif()
 # 显示项目构建完成后的信息
 add_custom_command(TARGET ColorfulRainSimulation POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E echo "构建完成！请确保以下资源文件存在:"
-    COMMAND ${CMAKE_COMMAND} -E echo "1. textures/waternormal.jpg"
+    COMMAND ${CMAKE_COMMAND} -E echo "1. textures/waternormal.jpeg"
     COMMAND ${CMAKE_COMMAND} -E echo "2. textures/waterDuDv.jpg"
     COMMAND ${CMAKE_COMMAND} -E echo "3. textures/waterReflection.jpg"
     COMMAND ${CMAKE_COMMAND} -E echo "4. textures/raindrop_glow.png"

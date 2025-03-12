@@ -225,7 +225,7 @@ ColorfulRainSimulation.exe: CMakeFiles/ColorfulRainSimulation.dir/link.txt
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --bold --progress-dir=E:\github\NightRain2\build\CMakeFiles --progress-num=$(CMAKE_PROGRESS_9) "Linking CXX executable ColorfulRainSimulation.exe"
 	$(CMAKE_COMMAND) -E cmake_link_script CMakeFiles\ColorfulRainSimulation.dir\link.txt --verbose=$(VERBOSE)
 	"D:\Program Files\CMake\bin\cmake.exe" -E echo 构建完成！请确保以下资源文件存在:
-	"D:\Program Files\CMake\bin\cmake.exe" -E echo "1. textures/waternormal.jpg"
+	"D:\Program Files\CMake\bin\cmake.exe" -E echo "1. textures/waternormal.jpeg"
 	"D:\Program Files\CMake\bin\cmake.exe" -E echo "2. textures/waterDuDv.jpg"
 	"D:\Program Files\CMake\bin\cmake.exe" -E echo "3. textures/waterReflection.jpg"
 	"D:\Program Files\CMake\bin\cmake.exe" -E echo "4. textures/raindrop_glow.png"
