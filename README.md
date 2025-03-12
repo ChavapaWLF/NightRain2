@@ -1,173 +1,192 @@
-# 池塘夜雨彩色雨滴模拟
+# Colorful Rain Simulation
 
-一个使用C++和OpenGL实现的高性能3D图形应用，模拟彩色雨滴落入水中的视觉和听觉效果。
+A real-time OpenGL-based simulation of colorful raindrops falling onto a water surface at night. This application creates a serene night scene with a dynamic water surface, colorful rain, and beautiful ripple effects.
 
-## 项目特点
+![Colorful Rain Simulation](screenshots/preview.png)
 
-- 真实的3D雨滴下落物理模拟
-- 逼真的水面渲染和水波纹扩散效果
-- 彩色雨滴和水波效果，营造梦幻夜雨氛围
-- 立体声音效，增强沉浸感
-- 完整的用户界面，支持调整各种参数
-- 高性能设计，支持大量粒子同时渲染
+## Features
 
-## 系统要求
+- Real-time water surface simulation with dynamic wave patterns
+- Colorful raindrops with particle effects and trails
+- Interactive ripple effects when raindrops hit the water
+- Immersive night sky background with stars and moon
+- Audio effects for raindrop splashes and ambient rain sounds
+- Customizable parameters through a user-friendly interface
+- Smooth camera controls for exploring the scene
 
-### 最低配置
-- 支持OpenGL 3.3或更高版本的显卡
-- 2GB显存
-- 4GB系统内存
-- 支持C++17的编译器
-- CMake 3.10或更高版本
+## System Requirements
 
-### 推荐配置
-- 支持OpenGL 4.5的中高端显卡
-- 4GB或更高显存
-- 8GB或更高系统内存
-- 多核CPU
+- Windows, macOS, or Linux operating system
+- Graphics card with OpenGL 3.3+ support
+- 4GB RAM (minimum)
+- 100MB disk space
+- Audio output device (optional, for sound effects)
 
-## 依赖库
+## Dependencies
 
-本项目依赖以下第三方库：
-- GLFW (窗口和输入处理)
-- GLEW (OpenGL扩展加载)
-- GLM (数学库)
-- ImGui (用户界面)
-- stb_image.h (图像加载)
-- stb_image_write.h (图像写入)
-- irrKlang (音频处理)
+The project requires the following libraries:
 
-## 构建说明
+- **OpenGL** (3.3 or higher)
+- **GLEW** (OpenGL Extension Wrangler Library)
+- **GLFW3** (for window creation and input handling)
+- **GLM** (OpenGL Mathematics)
+- **SDL2** (Simple DirectMedia Layer, for audio)
+- **SDL2_mixer** (for advanced audio capabilities)
+- **ImGui** (for the user interface)
+- **stb_image** (for texture loading)
 
-### Windows
-1. 安装必要的依赖库：
+## Building the Project
+
+### Prerequisites
+
+Ensure you have CMake (3.10 or higher) and a C++17 compatible compiler installed.
+
+### Building with CMake
+
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/yourusername/ColorfulRainSimulation.git
+   cd ColorfulRainSimulation
    ```
-   vcpkg install glfw3 glew glm
-   ```
 
-2. 下载并安装ImGui和irrKlang
-
-3. 使用CMake生成项目：
-   ```
+2. Create a build directory:
+   ```bash
    mkdir build
    cd build
+   ```
+
+3. Configure and build the project:
+   ```bash
    cmake ..
    ```
 
-4. 打开生成的Visual Studio项目并构建
+4. Compile:
+   - On Windows with MinGW:
+     ```bash
+     mingw32-make
+     ```
+   - On Windows with MSVC:
+     ```bash
+     cmake --build . --config Release
+     ```
+   - On macOS/Linux:
+     ```bash
+     make
+     ```
 
-### Linux
-1. 安装必要的依赖库：
-   ```
-   sudo apt install libglfw3-dev libglew-dev libglm-dev
-   ```
-
-2. 下载并安装ImGui和irrKlang
-
-3. 构建项目：
-   ```
-   mkdir build
-   cd build
-   cmake ..
-   make
-   ```
-
-### macOS
-1. 使用Homebrew安装依赖：
-   ```
-   brew install glfw glew glm
+5. Run the application:
+   ```bash
+   ./ColorfulRainSimulation
    ```
 
-2. 下载并安装ImGui和irrKlang
+### Required Resources
 
-3. 构建项目：
-   ```
-   mkdir build
-   cd build
-   cmake ..
-   make
-   ```
+Before running, ensure the following directories exist with appropriate textures:
 
-## 文件结构
+- `textures/waternormal.jpeg` (1024x1024 pixels)
+- `textures/waterDuDv.jpg` (512x512 pixels)
+- `textures/waterReflection.jpg` (1024x1024 pixels)
+- `textures/raindrop_glow.png` (128x128 pixels, with alpha channel)
+- `textures/night_sky.jpg` (2048x1024 pixels)
+
+Optional audio files:
+- `audio/raindrop_splash.wav`
+- `audio/ambient_rain.mp3`
+- `audio/water_ripple.wav`
+
+## Project Structure
 
 ```
-/
-├── main.cpp              # 主程序代码
-├── CMakeLists.txt        # CMake构建配置
-├── include/              # 头文件
-│   ├── stb/              # STB图像库
-│   ├── imgui/            # ImGui库
-│   └── irrKlang/         # irrKlang音频库
-├── lib/                  # 库文件
-├── shaders/              # 着色器文件
-│   ├── water.vert        # 水面顶点着色器
-│   ├── water.frag        # 水面片段着色器
-│   ├── raindrop.vert     # 雨滴顶点着色器
-│   ├── raindrop.frag     # 雨滴片段着色器
-│   ├── ripple.vert       # 水波顶点着色器
-│   └── ripple.frag       # 水波片段着色器
-├── textures/             # 纹理文件
-│   ├── waternormal.jpg   # 水面法线贴图
-│   ├── waterDuDv.jpg     # 水面扰动贴图
-│   ├── waterReflection.jpg # 水面反射贴图
-│   ├── raindrop_glow.png # 雨滴光晕贴图
-│   └── night_sky.jpg     # 夜空背景贴图
-└── audio/                # 音频文件
-    ├── raindrop_splash.wav # 雨滴入水声音
-    ├── ambient_rain.mp3  # 背景雨声
-    └── water_ripple.wav  # 水波声音
+ColorfulRainSimulation/
+├── include/                  # Header files
+│   ├── GL/                   # OpenGL headers
+│   ├── glm/                  # GLM library headers
+│   ├── SDL2/                 # SDL2 headers
+│   ├── imgui/                # ImGui library
+│   └── stb/                  # stb_image library
+├── lib/                      # Library files
+├── shaders/                  # GLSL shader files
+│   ├── water.vert            # Water vertex shader
+│   ├── water.frag            # Water fragment shader
+│   ├── raindrop.vert         # Raindrop vertex shader
+│   ├── raindrop.frag         # Raindrop fragment shader
+│   ├── ripple.vert           # Ripple vertex shader
+│   └── ripple.frag           # Ripple fragment shader
+├── textures/                 # Texture files
+├── audio/                    # Audio files
+├── src/                      # Source files
+│   └── main.cpp              # Main application code
+├── CMakeLists.txt            # CMake build script
+├── filesystem_compat.h       # Filesystem compatibility layer
+└── README.md                 # This file
 ```
 
-## 资源文件
+## Controls
 
-项目需要以下资源文件才能正常运行：
+- **W/A/S/D**: Move camera forward/left/backward/right
+- **Space**: Move camera up
+- **Ctrl**: Move camera down
+- **Arrow Keys**: Rotate camera view
+- **ESC**: Exit application
 
-### 纹理文件
-1. `textures/waternormal.jpg` - 水面法线贴图
-2. `textures/waterDuDv.jpg` - 水面扰动贴图
-3. `textures/waterReflection.jpg` - 水面反射贴图
-4. `textures/raindrop_glow.png` - 雨滴光晕贴图
-5. `textures/night_sky.jpg` - 夜空背景贴图
+## Parameter Adjustment
 
-### 音频文件
-1. `audio/raindrop_splash.wav` - 雨滴入水声音
-2. `audio/ambient_rain.mp3` - 背景雨声
-3. `audio/water_ripple.wav` - 水波声音
+The application includes a control panel that allows you to adjust various parameters:
 
-如果无法找到这些资源文件，程序会生成简单的默认资源作为替代，但为了获得最佳体验，建议使用高质量资源文件。
+### Rain Settings
+- **Rain Density**: Controls how many raindrops are generated
+- **Min/Max Raindrop Size**: Adjusts the size range of raindrops
+- **Min/Max Raindrop Speed**: Controls how fast raindrops fall
+- **Raindrop Colors**: Customize the colors of raindrops
 
-## 控制说明
+### Water Settings
+- **Wave Strength**: Controls the intensity of water waves
+- **Max Ripple Size**: Adjusts the maximum size of ripples
+- **Ripple Rings**: Sets the number of concentric rings in each ripple
+- **Update Interval**: Controls how frequently the simulation updates
+- **Ripple Colors**: Customize the colors of water ripples
 
-- **WASD键** - 移动摄像机
-- **鼠标** - 旋转视角
-- **空格键** - 上升
-- **左Shift键** - 下降
-- **Esc键** - 退出程序
+### Camera Settings
+- **Camera Speed**: Adjusts how quickly the camera moves
+- **Current position and direction** information is displayed
 
-## 参数调整
+### Audio Settings
+- **Enable Sound**: Toggle sound effects on/off
+- **Master Volume**: Overall volume control
+- **Raindrop Volume**: Volume of raindrop splash sounds
+- **Ambient Rain Volume**: Volume of background rain
+- **Ripple Volume**: Volume of ripple sound effects
 
-通过界面可以调整以下参数：
-- 雨点密度
-- 最大水波大小
-- 更新间隔
-- 音频设置（主音量、雨滴音量、环境音量、水波音量）
+## License
 
-## 性能调优
+This project is licensed under the MIT License - see below for details:
 
-如果在低配置系统上遇到性能问题，可以：
-1. 降低雨滴密度
-2. 减小最大水波大小
-3. 增加更新间隔
-4. 关闭音频效果
+```
+MIT License
 
-## 许可证
+Copyright (c) 2025 [Your Name]
 
-本项目采用MIT许可证。详见LICENSE文件。
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
 
-## 致谢
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
 
-- OpenGL和GLFW社区
-- ImGui库
-- STB库
-- irrKlang音频引擎
-- 所有测试和提供反馈的用户
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+## Acknowledgements
+
+- Special thanks to the developers of all the libraries used in this project
+- Inspiration drawn from natural rain and water surface physics
+- Thanks to everyone who contributed to testing and providing feedback
