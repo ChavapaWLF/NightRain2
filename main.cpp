@@ -61,7 +61,7 @@ void writeShaderFiles();
 // Constants
 const unsigned int SCR_WIDTH = 1280;
 const unsigned int SCR_HEIGHT = 720;
-const float POND_SIZE = 100.0f;
+const float POND_SIZE = 500.0f;
 const float WATER_HEIGHT = 0.0f;
 
 // Additional constants for better visuals without textures
@@ -328,17 +328,17 @@ public:
     
     void init(const glm::vec3& _position, const glm::vec3& _color) {
         position = _position;
-        position.y = WATER_HEIGHT + 0.01f; // Slightly above water surface
+        position.y = WATER_HEIGHT + 0.01f; // 略高于水面
         color = _color;
-        radius = 0.2f; // Smaller initial radius
-        maxRadius = 5.0f + static_cast<float>(rand()) / RAND_MAX * 15.0f;
-        thickness = 0.1f + static_cast<float>(rand()) / RAND_MAX * 0.2f; // More thickness variation
+        radius = 1.0f; // 增大初始半径
+        maxRadius = 20.0f + static_cast<float>(rand()) / RAND_MAX * 30.0f; // 大幅增加最大半径
+        thickness = 0.2f + static_cast<float>(rand()) / RAND_MAX * 0.4f; // 增加厚度
         opacity = 0.7f + static_cast<float>(rand()) / RAND_MAX * 0.3f;
-        growthRate = 1.5f + static_cast<float>(rand()) / RAND_MAX * 3.0f;
+        growthRate = 5.0f + static_cast<float>(rand()) / RAND_MAX * 8.0f; // 大幅增加生长速率
         lifetime = 0.0f;
-        maxLifetime = 1.5f + static_cast<float>(rand()) / RAND_MAX * 1.0f;
+        maxLifetime = 3.0f + static_cast<float>(rand()) / RAND_MAX * 2.0f; // 延长寿命
         pulseFrequency = 2.0f + static_cast<float>(rand()) / RAND_MAX * 3.0f;
-        pulseAmplitude = 0.05f + static_cast<float>(rand()) / RAND_MAX * 0.1f;
+        pulseAmplitude = 0.2f + static_cast<float>(rand()) / RAND_MAX * 0.3f; // 增加脉冲幅度
     }
     
     bool update(float deltaTime) {
@@ -391,6 +391,8 @@ public:
     unsigned int moonVAO, moonVBO;        // New: moon
     unsigned int starVAO, starVBO;        // New: stars
     unsigned int trailVAO, trailVBO;      // New: raindrop trail
+    unsigned int waterIndexCount;  // 水面索引数量
+    unsigned int skyVertexCount;   // 天空顶点数量
     
     // Textures
     unsigned int waterNormalTexture;
@@ -419,9 +421,9 @@ public:
     
     // Configuration
     struct {
-        int rainDensity = 80;  // Increased default rain amount
-        float maxRippleSize = 15.0f;
-        float updateInterval = 0.02f; // More frequent updates
+        int rainDensity = 150;  // Increased default rain amount
+        float maxRippleSize = 25.0f;
+        float updateInterval = 0.01f; // More frequent updates
         float rippleFadeSpeed = 0.02f;
         std::vector<glm::vec3> raindropColors = {
             glm::vec3(0.7f, 0.0f, 0.9f), // Purple
@@ -451,7 +453,7 @@ public:
         // Camera movement speed
         float cameraSpeed = 10.0f;
         // Water wave strength
-        float waveStrength = 0.2f;
+        float waveStrength = 0.8f;
         // Show debug info
         bool showDebugInfo = true;
     } config;
@@ -487,15 +489,15 @@ public:
     } performanceMetrics;
     
     RainSimulation() : 
-        window(nullptr),
-        cameraPos(glm::vec3(0.0f, 10.0f, 40.0f)),
-        cameraFront(glm::vec3(0.0f, 0.0f, -1.0f)),
-        cameraUp(glm::vec3(0.0f, 1.0f, 0.0f)),
-        cameraPitch(-15.0f),
-        cameraYaw(-90.0f),
-        raindropSound(nullptr),
-        ambientRainSound(nullptr),
-        waterRippleSound(nullptr) {
+    window(nullptr),
+    cameraPos(glm::vec3(0.0f, 40.0f, 100.0f)), // 提高高度和距离
+    cameraFront(glm::vec3(0.0f, -0.3f, -1.0f)), // 更倾斜地向下看
+    cameraUp(glm::vec3(0.0f, 1.0f, 0.0f)),
+    cameraPitch(-20.0f), // 更大的俯仰角
+    cameraYaw(-90.0f),
+    raindropSound(nullptr),
+    ambientRainSound(nullptr),
+    waterRippleSound(nullptr) {
     }
     
     ~RainSimulation() {
@@ -870,6 +872,8 @@ public:
         }
         
         try {
+            skyShader = std::make_unique<Shader>("shaders/sky.vert", "shaders/sky.frag");
+
             // Load water shader
             waterShader = std::make_unique<Shader>(waterVertPath, waterFragPath);
             
@@ -880,7 +884,6 @@ public:
             rippleShader = std::make_unique<Shader>(rippleVertPath, rippleFragPath);
             
             // Reuse shaders for other elements
-            skyShader = std::make_unique<Shader>(waterVertPath, waterFragPath);
             moonShader = std::make_unique<Shader>(raindropVertPath, raindropFragPath);
             starShader = std::make_unique<Shader>(raindropVertPath, raindropFragPath);
             trailShader = std::make_unique<Shader>(rippleVertPath, rippleFragPath);
@@ -903,39 +906,73 @@ public:
     }
     
     void createGeometry() {
-        // Create water plane
-        float waterVertices[] = {
-            // Position          // Texture coordinates
-            -POND_SIZE/2, 0.0f, -POND_SIZE/2,  0.0f, 0.0f,
-             POND_SIZE/2, 0.0f, -POND_SIZE/2,  1.0f, 0.0f,
-             POND_SIZE/2, 0.0f,  POND_SIZE/2,  1.0f, 1.0f,
-            
-            -POND_SIZE/2, 0.0f, -POND_SIZE/2,  0.0f, 0.0f,
-             POND_SIZE/2, 0.0f,  POND_SIZE/2,  1.0f, 1.0f,
-            -POND_SIZE/2, 0.0f,  POND_SIZE/2,  0.0f, 1.0f
-        };
+        // 创建水面平面 - 使用更多顶点以支持更大的水面和更好的波浪效果
+        std::vector<float> waterVertices;
+        const int gridSize = 32;  // 增加网格密度
+        const float cellSize = POND_SIZE / gridSize;
         
+        for (int z = 0; z <= gridSize; z++) {
+            for (int x = 0; x <= gridSize; x++) {
+                float xPos = -POND_SIZE/2 + x * cellSize;
+                float zPos = -POND_SIZE/2 + z * cellSize;
+                float texU = (float)x / gridSize;
+                float texV = (float)z / gridSize;
+                
+                waterVertices.push_back(xPos);
+                waterVertices.push_back(0.0f);
+                waterVertices.push_back(zPos);
+                waterVertices.push_back(texU);
+                waterVertices.push_back(texV);
+            }
+        }
+        
+        std::vector<unsigned int> waterIndices;
+        for (int z = 0; z < gridSize; z++) {
+            for (int x = 0; x < gridSize; x++) {
+                unsigned int topLeft = z * (gridSize + 1) + x;
+                unsigned int topRight = topLeft + 1;
+                unsigned int bottomLeft = (z + 1) * (gridSize + 1) + x;
+                unsigned int bottomRight = bottomLeft + 1;
+                
+                // 第一个三角形
+                waterIndices.push_back(topLeft);
+                waterIndices.push_back(bottomLeft);
+                waterIndices.push_back(topRight);
+                
+                // 第二个三角形
+                waterIndices.push_back(topRight);
+                waterIndices.push_back(bottomLeft);
+                waterIndices.push_back(bottomRight);
+            }
+        }
+        
+        unsigned int waterEBO;
         glGenVertexArrays(1, &waterVAO);
         glGenBuffers(1, &waterVBO);
+        glGenBuffers(1, &waterEBO);
         
         glBindVertexArray(waterVAO);
-        glBindBuffer(GL_ARRAY_BUFFER, waterVBO);
-        glBufferData(GL_ARRAY_BUFFER, sizeof(waterVertices), waterVertices, GL_STATIC_DRAW);
         
-        // Position attribute
+        glBindBuffer(GL_ARRAY_BUFFER, waterVBO);
+        glBufferData(GL_ARRAY_BUFFER, waterVertices.size() * sizeof(float), waterVertices.data(), GL_STATIC_DRAW);
+        
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, waterEBO);
+        glBufferData(GL_ELEMENT_ARRAY_BUFFER, waterIndices.size() * sizeof(unsigned int), waterIndices.data(), GL_STATIC_DRAW);
+        
+        // 位置属性
         glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)0);
         glEnableVertexAttribArray(0);
         
-        // Texture coordinate attribute
+        // 纹理坐标属性
         glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3 * sizeof(float)));
         glEnableVertexAttribArray(1);
         
-        glBindBuffer(GL_ARRAY_BUFFER, 0);
-        glBindVertexArray(0);
+        // 保存索引数量供渲染时使用
+        waterIndexCount = waterIndices.size();
         
-        // Create raindrop point
+        // 创建雨滴点
         float raindropVertices[] = {
-            // A single point
+            // 一个点
             0.0f, 0.0f, 0.0f
         };
         
@@ -946,18 +983,18 @@ public:
         glBindBuffer(GL_ARRAY_BUFFER, raindropVBO);
         glBufferData(GL_ARRAY_BUFFER, sizeof(raindropVertices), raindropVertices, GL_STATIC_DRAW);
         
-        // Position attribute
+        // 位置属性
         glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
         glEnableVertexAttribArray(0);
         
         glBindBuffer(GL_ARRAY_BUFFER, 0);
         glBindVertexArray(0);
         
-        // Create water ripple ring - more nodes and details
+        // 创建水波环 - 更多节点和细节
         std::vector<float> rippleVertices;
-        const int segments = 128; // More detail
+        const int segments = 128; // 增加细节
         
-        // Create multiple concentric rings
+        // 创建多个同心环
         for (int ring = 0; ring < config.rippleRings; ring++) {
             float innerRadius = 0.7f + 0.1f * ring;
             float outerRadius = 0.9f + 0.1f * ring;
@@ -966,32 +1003,32 @@ public:
                 float theta1 = 2.0f * glm::pi<float>() * float(i) / float(segments);
                 float theta2 = 2.0f * glm::pi<float>() * float(i + 1) / float(segments);
                 
-                // Inner ring point
+                // 内环点
                 rippleVertices.push_back(innerRadius * cos(theta1));
                 rippleVertices.push_back(0.0f);
                 rippleVertices.push_back(innerRadius * sin(theta1));
                 
-                // Outer ring point
+                // 外环点
                 rippleVertices.push_back(outerRadius * cos(theta1));
                 rippleVertices.push_back(0.0f);
                 rippleVertices.push_back(outerRadius * sin(theta1));
                 
-                // Outer ring point (next)
+                // 外环点 (下一个)
                 rippleVertices.push_back(outerRadius * cos(theta2));
                 rippleVertices.push_back(0.0f);
                 rippleVertices.push_back(outerRadius * sin(theta2));
                 
-                // Inner ring point
+                // 内环点
                 rippleVertices.push_back(innerRadius * cos(theta1));
                 rippleVertices.push_back(0.0f);
                 rippleVertices.push_back(innerRadius * sin(theta1));
                 
-                // Outer ring point (next)
+                // 外环点 (下一个)
                 rippleVertices.push_back(outerRadius * cos(theta2));
                 rippleVertices.push_back(0.0f);
                 rippleVertices.push_back(outerRadius * sin(theta2));
                 
-                // Inner ring point (next)
+                // 内环点 (下一个)
                 rippleVertices.push_back(innerRadius * cos(theta2));
                 rippleVertices.push_back(0.0f);
                 rippleVertices.push_back(innerRadius * sin(theta2));
@@ -1005,19 +1042,19 @@ public:
         glBindBuffer(GL_ARRAY_BUFFER, rippleVBO);
         glBufferData(GL_ARRAY_BUFFER, rippleVertices.size() * sizeof(float), rippleVertices.data(), GL_STATIC_DRAW);
         
-        // Position attribute
+        // 位置属性
         glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
         glEnableVertexAttribArray(0);
         
         glBindBuffer(GL_ARRAY_BUFFER, 0);
         glBindVertexArray(0);
         
-        // Create sky dome
+        // 创建天空穹顶 - 使用更大的半径以避免裁剪
         std::vector<float> skyVertices;
         const int skySegments = 32;
-        const float skyRadius = 300.0f;
+        const float skyRadius = 500.0f;  // 增大天空半径以匹配水面大小
         
-        // Create hemisphere sky
+        // 创建半球形天空
         for (int y = 0; y < skySegments / 2; y++) {
             for (int x = 0; x < skySegments; x++) {
                 float theta1 = 2.0f * glm::pi<float>() * float(x) / float(skySegments);
@@ -1026,24 +1063,24 @@ public:
                 float phi1 = glm::pi<float>() * float(y) / float(skySegments / 2);
                 float phi2 = glm::pi<float>() * float(y + 1) / float(skySegments / 2);
                 
-                // Four points make two triangles
+                // 四个点构成两个三角形
                 glm::vec3 p1(skyRadius * sin(phi1) * cos(theta1), skyRadius * cos(phi1), skyRadius * sin(phi1) * sin(theta1));
                 glm::vec3 p2(skyRadius * sin(phi1) * cos(theta2), skyRadius * cos(phi1), skyRadius * sin(phi1) * sin(theta2));
                 glm::vec3 p3(skyRadius * sin(phi2) * cos(theta2), skyRadius * cos(phi2), skyRadius * sin(phi2) * sin(theta2));
                 glm::vec3 p4(skyRadius * sin(phi2) * cos(theta1), skyRadius * cos(phi2), skyRadius * sin(phi2) * sin(theta1));
                 
-                // Texture coordinates
-                glm::vec2 t1(float(x) / float(skySegments), float(y) / float(skySegments / 2));
-                glm::vec2 t2(float(x + 1) / float(skySegments), float(y) / float(skySegments / 2));
-                glm::vec2 t3(float(x + 1) / float(skySegments), float(y + 1) / float(skySegments / 2));
-                glm::vec2 t4(float(x) / float(skySegments), float(y + 1) / float(skySegments / 2));
+                // 纹理坐标 - 翻转Y坐标使纹理正确显示
+                glm::vec2 t1(float(x) / float(skySegments), 1.0f - float(y) / float(skySegments / 2));
+                glm::vec2 t2(float(x + 1) / float(skySegments), 1.0f - float(y) / float(skySegments / 2));
+                glm::vec2 t3(float(x + 1) / float(skySegments), 1.0f - float(y + 1) / float(skySegments / 2));
+                glm::vec2 t4(float(x) / float(skySegments), 1.0f - float(y + 1) / float(skySegments / 2));
                 
-                // First triangle
+                // 第一个三角形
                 skyVertices.push_back(p1.x); skyVertices.push_back(p1.y); skyVertices.push_back(p1.z); skyVertices.push_back(t1.x); skyVertices.push_back(t1.y);
                 skyVertices.push_back(p2.x); skyVertices.push_back(p2.y); skyVertices.push_back(p2.z); skyVertices.push_back(t2.x); skyVertices.push_back(t2.y);
                 skyVertices.push_back(p3.x); skyVertices.push_back(p3.y); skyVertices.push_back(p3.z); skyVertices.push_back(t3.x); skyVertices.push_back(t3.y);
                 
-                // Second triangle
+                // 第二个三角形
                 skyVertices.push_back(p1.x); skyVertices.push_back(p1.y); skyVertices.push_back(p1.z); skyVertices.push_back(t1.x); skyVertices.push_back(t1.y);
                 skyVertices.push_back(p3.x); skyVertices.push_back(p3.y); skyVertices.push_back(p3.z); skyVertices.push_back(t3.x); skyVertices.push_back(t3.y);
                 skyVertices.push_back(p4.x); skyVertices.push_back(p4.y); skyVertices.push_back(p4.z); skyVertices.push_back(t4.x); skyVertices.push_back(t4.y);
@@ -1057,27 +1094,30 @@ public:
         glBindBuffer(GL_ARRAY_BUFFER, skyVBO);
         glBufferData(GL_ARRAY_BUFFER, skyVertices.size() * sizeof(float), skyVertices.data(), GL_STATIC_DRAW);
         
-        // Position attribute
+        // 位置属性
         glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)0);
         glEnableVertexAttribArray(0);
         
-        // Texture coordinate attribute
+        // 纹理坐标属性
         glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3 * sizeof(float)));
         glEnableVertexAttribArray(1);
         
         glBindBuffer(GL_ARRAY_BUFFER, 0);
         glBindVertexArray(0);
         
-        // Create moon disc
+        // 天空顶点数量 - 保存供渲染时使用
+        skyVertexCount = skyVertices.size() / 5;
+        
+        // 创建月亮圆盘
         std::vector<float> moonVertices;
         const int moonSegments = 64;
         
-        // Moon center point
+        // 月亮中心点
         moonVertices.push_back(0.0f);
         moonVertices.push_back(0.0f);
         moonVertices.push_back(0.0f);
         
-        // Create moon disc
+        // 创建月亮圆盘
         for (int i = 0; i <= moonSegments; i++) {
             float theta = 2.0f * glm::pi<float>() * float(i) / float(moonSegments);
             float x = cos(theta);
@@ -1095,14 +1135,14 @@ public:
         glBindBuffer(GL_ARRAY_BUFFER, moonVBO);
         glBufferData(GL_ARRAY_BUFFER, moonVertices.size() * sizeof(float), moonVertices.data(), GL_STATIC_DRAW);
         
-        // Position attribute
+        // 位置属性
         glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
         glEnableVertexAttribArray(0);
         
         glBindBuffer(GL_ARRAY_BUFFER, 0);
         glBindVertexArray(0);
         
-        // Create raindrop trail geometry
+        // 创建雨滴轨迹几何体
         float trailVertices[] = {
             -0.5f, 0.0f, 0.0f,
              0.5f, 0.0f, 0.0f,
@@ -1116,7 +1156,7 @@ public:
         glBindBuffer(GL_ARRAY_BUFFER, trailVBO);
         glBufferData(GL_ARRAY_BUFFER, sizeof(trailVertices), trailVertices, GL_STATIC_DRAW);
         
-        // Position attribute
+        // 位置属性
         glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
         glEnableVertexAttribArray(0);
         
@@ -1519,6 +1559,12 @@ public:
     }
     
     void run() {
+        // 检查OpenGL错误
+        GLenum err;
+        while((err = glGetError()) != GL_NO_ERROR) {
+            std::cout << "OpenGL startup error: " << err << std::endl;
+        }
+
         // Main application loop
         while (!glfwWindowShouldClose(window)) {
             // Handle time
@@ -1666,74 +1712,63 @@ public:
     }
     
     void generateRaindrops() {
-        int raindropsToGenerate = config.rainDensity / 20;
+        int raindropsToGenerate = config.rainDensity / 10; // 增加生成数量
         
         for (int i = 0; i < raindropsToGenerate; ++i) {
-            if (rand() % 100 < 20) { // 20% chance to generate a raindrop
+            if (rand() % 100 < 40) { // 提高生成概率到40%
                 Raindrop raindrop;
                 
-                // Random position - in larger area above water surface
+                // 随机位置 - 在水面上方的更大区域，使用整个水面
                 float x = -POND_SIZE/2 + static_cast<float>(rand()) / RAND_MAX * POND_SIZE;
                 float z = -POND_SIZE/2 + static_cast<float>(rand()) / RAND_MAX * POND_SIZE;
-                float y = 20.0f + static_cast<float>(rand()) / RAND_MAX * 15.0f;
+                float y = 20.0f + static_cast<float>(rand()) / RAND_MAX * 20.0f;
                 
-                // Random color
+                // 随机颜色
                 int colorIndex = rand() % config.raindropColors.size();
                 
                 raindrop.init(glm::vec3(x, y, z), config.raindropColors[colorIndex], this);
-                
-                // Adjust size based on config
-                raindrop.size = config.minRaindropSize + 
-                    static_cast<float>(rand()) / RAND_MAX * (config.maxRaindropSize - config.minRaindropSize);
-                
-                // Adjust velocity based on config
-                float speedFactor = config.minRaindropSpeed + 
-                    static_cast<float>(rand()) / RAND_MAX * (config.maxRaindropSpeed - config.minRaindropSpeed);
-                raindrop.velocity.y = -speedFactor;
-                
                 raindrops.push_back(raindrop);
             }
         }
     }
     
     void render() {
-        // Clear buffers
-        glClearColor(0.01f, 0.02f, 0.05f, 1.0f); // Deeper night sky color
+        // 清空缓冲
+        glClearColor(0.01f, 0.02f, 0.05f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         
-        // View/projection matrices
+        // 视图/投影矩阵
         glm::mat4 view = glm::lookAt(cameraPos, cameraPos + cameraFront, cameraUp);
         glm::mat4 projection = glm::perspective(glm::radians(45.0f), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 1000.0f);
         
-        // Render sky
+        // 顺序很重要：先天空、再月亮和星星、然后水面、最后雨滴和波纹
         renderSky(view, projection);
-        
-        // Render moon
         renderMoon(view, projection);
-        
-        // Render stars
         renderStars(view, projection);
-        
-        // Render water surface
         renderWater(view, projection);
-        
-        // Render raindrops
         renderRaindrops(view, projection);
-        
-        // Render water ripples
         renderRipples(view, projection);
+        
+        // 渲染ImGui界面
+        renderUI();
+
+        // 检查渲染错误
+        GLenum err;
+        while((err = glGetError()) != GL_NO_ERROR) {
+            std::cout << "Render error: " << err << std::endl;
+        }
     }
 
     void renderWater(const glm::mat4& view, const glm::mat4& projection) {
         waterShader->use();
         
-        // Set transformation matrices
+        // 设置变换矩阵
         glm::mat4 model = glm::mat4(1.0f);
         waterShader->setMat4("model", model);
         waterShader->setMat4("view", view);
         waterShader->setMat4("projection", projection);
         
-        // Set textures
+        // 设置纹理
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, waterNormalTexture);
         waterShader->setInt("normalMap", 0);
@@ -1746,19 +1781,16 @@ public:
         glBindTexture(GL_TEXTURE_2D, waterReflectionTexture);
         waterShader->setInt("reflectionMap", 2);
         
-        // Set water properties
-        waterShader->setFloat("time", totalTime); // Use total time to animate water
+        // 设置水面属性 - 进一步增加波浪效果
+        waterShader->setFloat("time", totalTime);
         waterShader->setVec3("viewPos", cameraPos);
+        waterShader->setFloat("waveStrength", config.waveStrength * 10.0f); // 进一步增强波浪
+        waterShader->setFloat("waveSpeed", 1.5f); // 加快波浪速度
+        waterShader->setFloat("waterDepth", 0.8f); // 加深水色
         
-        // Set wave properties with additional parameters for better control
-        float waveStrength = config.waveStrength * (0.05f + 0.02f * sin(totalTime * 0.5f)); // Wave strength with time variation
-        waterShader->setFloat("waveStrength", waveStrength);
-        waterShader->setFloat("waveSpeed", 0.8f); // Wave speed
-        waterShader->setFloat("waterDepth", 0.3f + 0.05f * sin(totalTime * 0.3f)); // Water depth
-        
-        // Draw water surface
+        // 使用索引绘制水面
         glBindVertexArray(waterVAO);
-        glDrawArrays(GL_TRIANGLES, 0, 6);
+        glDrawElements(GL_TRIANGLES, waterIndexCount, GL_UNSIGNED_INT, 0);
         glBindVertexArray(0);
     }
     
@@ -1845,34 +1877,37 @@ public:
     void renderRipples(const glm::mat4& view, const glm::mat4& projection) {
         rippleShader->use();
         
-        // Set transformation matrices
+        // 设置变换矩阵
         rippleShader->setMat4("view", view);
         rippleShader->setMat4("projection", projection);
         
-        // Loop through all water ripples
+        // 增加波纹渲染的透明度混合
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        
+        // 遍历所有水波
         glBindVertexArray(rippleVAO);
         for (const auto& ripple : ripples) {
-            // Set model matrix
+            // 设置模型矩阵
             glm::mat4 model = glm::mat4(1.0f);
             model = glm::translate(model, ripple.position);
             
-            // Slightly rotate ripple over time
+            // 轻微旋转水波
             model = glm::rotate(model, totalTime * 0.1f, glm::vec3(0.0f, 1.0f, 0.0f));
             
-            // Scale slightly differently based on current thickness
-            float thicknessFactor = ripple.getCurrentThickness() / 0.2f;
-            model = glm::scale(model, glm::vec3(ripple.radius * (1.0f + 0.02f * thicknessFactor)));
+            // 使用更大的缩放
+            model = glm::scale(model, glm::vec3(ripple.radius));
             
             rippleShader->setMat4("model", model);
             
-            // Set ripple properties - color varies with time and thickness
-            float colorPulse = 0.9f + 0.1f * sin(totalTime * ripple.pulseFrequency);
-            glm::vec3 pulsingColor = ripple.color * colorPulse;
+            // 增加颜色亮度和透明度
+            float colorPulse = 1.0f + 0.2f * sin(totalTime * ripple.pulseFrequency);
+            glm::vec3 pulsingColor = ripple.color * colorPulse * 1.5f; // 增加亮度
             
             rippleShader->setVec3("rippleColor", pulsingColor);
-            rippleShader->setFloat("opacity", ripple.opacity);
+            rippleShader->setFloat("opacity", ripple.opacity * 1.2f); // 增加透明度
             
-            // Draw ripple - triangle count depends on ring count and segment count
+            // 绘制水波
             glDrawArrays(GL_TRIANGLES, 0, 6 * 128 * config.rippleRings);
         }
         glBindVertexArray(0);
@@ -1880,30 +1915,43 @@ public:
     
     // New: render sky
     void renderSky(const glm::mat4& view, const glm::mat4& projection) {
+        // 保存当前深度测试状态
+        GLboolean depthTest = glIsEnabled(GL_DEPTH_TEST);
+        
+        // 禁用深度测试，确保天空在后面
+        glDisable(GL_DEPTH_TEST);
+        
         skyShader->use();
         
-        // Set transformation matrices - make sky follow camera
+        // 创建单独的视图矩阵，仅保留旋转部分，不包含平移
+        glm::mat4 skyView = glm::mat4(glm::mat3(view));
+        
+        // 设置变换矩阵 - 天空跟随相机旋转但不跟随位置
         glm::mat4 model = glm::mat4(1.0f);
-        model = glm::translate(model, glm::vec3(cameraPos.x, 0.0f, cameraPos.z));
         skyShader->setMat4("model", model);
-        skyShader->setMat4("view", view);
+        skyShader->setMat4("view", skyView); // 使用特殊的天空视图矩阵
         skyShader->setMat4("projection", projection);
         
-        // Set sky properties
-        skyShader->setFloat("time", totalTime * 0.01f); // Very slow movement
-        skyShader->setVec3("viewPos", cameraPos);
+        // 设置天空属性
+        skyShader->setFloat("time", totalTime * 0.01f);
+        skyShader->setVec3("viewPos", glm::vec3(0.0f)); // 天空中心位置
         
-        // Set texture
+        // 为天空着色器设置特殊的Uniform以区别于水面着色器
+        skyShader->setBool("isSky", true);
+        
+        // 设置纹理
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, skyTexture);
-        skyShader->setInt("normalMap", 0); // Use sky texture instead of normal map
+        skyShader->setInt("skyTexture", 0);
         
-        // Draw sky
-        glDepthMask(GL_FALSE); // Disable depth write, ensure sky is in background
+        // 绘制天空
         glBindVertexArray(skyVAO);
-        glDrawArrays(GL_TRIANGLES, 0, 32 * 16 * 6); // Number of triangles in sky dome
+        glDrawArrays(GL_TRIANGLES, 0, skyVertexCount);
         glBindVertexArray(0);
-        glDepthMask(GL_TRUE); // Re-enable depth write
+        
+        // 恢复原始深度测试状态
+        if (depthTest) glEnable(GL_DEPTH_TEST);
+        else glDisable(GL_DEPTH_TEST);
     }
     
     // New: render moon
@@ -2139,6 +2187,51 @@ void writeShaderFiles() {
         create_directory("shaders");
     }
     
+    // 创建新的天空着色器：shaders/sky.vert
+    const char* skyVertexShader = R"(
+#version 330 core
+layout (location = 0) in vec3 aPos;
+layout (location = 1) in vec2 aTexCoords;
+
+out vec2 TexCoords;
+
+uniform mat4 model;
+uniform mat4 view;
+uniform mat4 projection;
+
+void main() {
+    gl_Position = projection * view * model * vec4(aPos, 1.0);
+    TexCoords = aTexCoords;
+}
+)";
+    
+    // 创建新的天空着色器：shaders/sky.frag
+    const char* skyFragmentShader = R"(
+#version 330 core
+out vec4 FragColor;
+
+in vec2 TexCoords;
+
+uniform sampler2D skyTexture;
+uniform float time;
+
+void main() {
+    // 采样天空纹理
+    vec4 skyColor = texture(skyTexture, TexCoords);
+    
+    // 添加一些闪烁的星星
+    float stars = 0.0;
+    if (fract(sin(TexCoords.x * 100.0) * sin(TexCoords.y * 100.0) * 43758.5453) > 0.997) {
+        stars = 0.5 + 0.5 * sin(time * 2.0 + TexCoords.x * 10.0);
+    }
+    
+    // 最终颜色是天空纹理与闪烁星星的混合
+    vec3 finalColor = skyColor.rgb + stars * vec3(0.8, 0.8, 1.0);
+    
+    FragColor = vec4(finalColor, 1.0);
+}
+)";
+
     // Vertex shader - water (enhanced)
     const char* waterVertexShader = R"(
 #version 330 core
@@ -2403,6 +2496,14 @@ void main() {
 }
 )";
     
+    std::ofstream skyVert("shaders/sky.vert");
+    skyVert << skyVertexShader;
+    skyVert.close();
+
+    std::ofstream skyFrag("shaders/sky.frag");
+    skyFrag << skyFragmentShader;
+    skyFrag.close();
+
     // Water shaders
     std::ofstream waterVert("shaders/water.vert");
     waterVert << waterVertexShader;
