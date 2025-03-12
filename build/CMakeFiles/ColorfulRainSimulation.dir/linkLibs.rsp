@@ -1,0 +1,1 @@
+ -lopengl32 -lglu32 E:/github/NightRain2/lib/glew32.lib E:/github/NightRain2/lib/libglfw3.a E:/github/NightRain2/lib/libSDL2.a E:/github/NightRain2/lib/libSDL2main.a E:/github/NightRain2/lib/libSDL2_mixer.a -mconsole -lwinmm -lgdi32 -luser32 -lshell32 -limm32 -lversion -lsetupapi -lkernel32 -luser32 -lgdi32 -lwinspool -lshell32 -lole32 -loleaut32 -luuid -lcomdlg32 -ladvapi32 
