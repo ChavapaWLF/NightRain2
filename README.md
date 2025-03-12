@@ -45,8 +45,8 @@ Ensure you have CMake (3.10 or higher) and a C++17 compatible compiler installed
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/yourusername/ColorfulRainSimulation.git
-   cd ColorfulRainSimulation
+   git clone https://github.com/ChavapaWLF/NightRain2.git
+   cd NightRain2
    ```
 
 2. Create a build directory:
@@ -114,8 +114,7 @@ ColorfulRainSimulation/
 │   └── ripple.frag           # Ripple fragment shader
 ├── textures/                 # Texture files
 ├── audio/                    # Audio files
-├── src/                      # Source files
-│   └── main.cpp              # Main application code
+├── main.cpp                  # Main application code
 ├── CMakeLists.txt            # CMake build script
 ├── filesystem_compat.h       # Filesystem compatibility layer
 └── README.md                 # This file
