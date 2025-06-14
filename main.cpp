@@ -1,6 +1,6 @@
-// main.cpp - Main program entry
+// main.cpp - 主程序入口
 
-// !!!IMPORTANT!!! SDL.h must be the first included header for proper WinMain definition
+// 重要！！！SDL.h必须是第一个包含的头文件以确保WinMain定义正确
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_mixer.h>
 
@@ -17,34 +17,34 @@
 #ifdef _WIN32
 #include <windows.h>
 
-// Set console code page to UTF-8 or GBK
+// 设置控制台代码页为UTF-8或GBK
 void setConsoleCodePage() {
-    // Use UTF-8 code page (65001)
+    // 使用UTF-8代码页 (65001)
     SetConsoleOutputCP(65001);
-    // Or use Simplified Chinese GBK code page (936)
+    // 或使用简体中文GBK代码页 (936)
     // SetConsoleOutputCP(936);
 }
 #else
 void setConsoleCodePage() {
-    // No need to set for non-Windows systems
+    // 非Windows系统无需设置
 }
 #endif
 
-// Add custom filesystem compatibility layer
+// 添加自定义文件系统兼容层
 #include "filesystem_compat.h"
 
-// Texture loading
+// 纹理加载
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb/stb_image.h"
 
-// Image writing
+// 图像写入
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb/stb_image_write.h"
 
-// Ensure using SDL's main
+// 确保使用SDL的main
 #define SDL_MAIN_HANDLED
 
-// OpenGL related libraries
+// OpenGL相关库
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
 #include <glm/glm.hpp>
@@ -58,20 +58,20 @@ void setConsoleCodePage() {
 
 void writeShaderFiles();
 
-// Constants
+// 常量定义
 const unsigned int SCR_WIDTH = 1280;
 const unsigned int SCR_HEIGHT = 720;
 const float POND_SIZE = 500.0f;
 const float WATER_HEIGHT = 0.0f;
 
-// Additional constants for better visuals without textures
-const int STARS_COUNT = 150;      // 减少星星数量，避免过于密集
-const int CLOUD_COUNT = 5;        // Number of clouds
-const float MOON_SIZE = 20.0f;    // Moon size
-const float MOON_X = 70.0f;       // Moon X coordinate
-const float MOON_Y = 60.0f;       // Moon Y coordinate
+// 优化性能的额外常量
+const int STARS_COUNT = 100;      // 减少星星数量以提高性能
+const int CLOUD_COUNT = 4;        // 云朵数量
+const float MOON_SIZE = 20.0f;    // 月亮大小
+const float MOON_X = 70.0f;       // 月亮X坐标
+const float MOON_Y = 60.0f;       // 月亮Y坐标
 
-// Star structure
+// 星星结构
 struct Star {
     glm::vec3 position;
     float brightness;
@@ -79,7 +79,7 @@ struct Star {
     float size;
 };
 
-// Cloud structure
+// 云朵结构
 struct Cloud {
     glm::vec3 position;
     float size;
@@ -87,7 +87,7 @@ struct Cloud {
     float speed;
 };
 
-// Lightning structure - 新增闪电结构
+// 闪电结构
 struct Lightning {
     std::vector<glm::vec3> segments;  // 闪电路径段
     glm::vec3 color;
@@ -109,9 +109,7 @@ struct Lightning {
         
     void generate(const glm::vec3& start, const glm::vec3& end) {
         segments.clear();
-        
-        glm::vec3 current = start;
-        glm::vec3 target = end;
+        segments.reserve(15); // 预分配内存提高性能
         
         // 主路径
         int numSegments = 8 + rand() % 6;  // 8-13个段
@@ -140,7 +138,7 @@ struct Lightning {
         );
         
         intensity = 0.8f + static_cast<float>(rand()) / RAND_MAX * 0.4f;
-        duration = 0.2f + static_cast<float>(rand()) / RAND_MAX * 0.4f;
+        duration = 1.0f + static_cast<float>(rand()) / RAND_MAX * 2.0f; // 延长持续时间
         thickness = 1.5f + static_cast<float>(rand()) / RAND_MAX * 2.0f;
         branches = rand() % 3;  // 0-2个分支
         
@@ -159,20 +157,20 @@ struct Lightning {
         
         if (currentTime >= duration) {
             active = false;
-            return false;
+            return false; // 返回false表示应该删除
         }
         
-        return true;
+        return true; // 返回true表示继续保持
     }
 };
 
-// Shader class
+// 着色器类
 class Shader {
 public:
     unsigned int ID;
 
     Shader(const char* vertexPath, const char* fragmentPath) {
-        // 1. Read vertex and fragment shader source from files
+        // 1. 从文件读取顶点和片段着色器源代码
         std::string vertexCode;
         std::string fragmentCode;
         std::ifstream vShaderFile;
@@ -197,11 +195,11 @@ public:
             fragmentCode = fShaderStream.str();
         }
         catch(std::ifstream::failure& e) {
-            std::cout << "ERROR::SHADER::FILE_NOT_SUCCESSFULLY_READ: " << e.what() << std::endl;
+            std::cout << "错误::着色器::文件读取失败: " << e.what() << std::endl;
             
-            // Try looking for files in the project root if build directory fails
+            // 如果构建目录失败，尝试在项目根目录查找文件
             try {
-                // Try looking one directory up
+                // 尝试向上一级目录查找
                 std::string projectRootVertPath = std::string("../") + vertexPath;
                 std::string projectRootFragPath = std::string("../") + fragmentPath;
                 
@@ -219,54 +217,54 @@ public:
                 vertexCode = vShaderStream.str();
                 fragmentCode = fShaderStream.str();
                 
-                std::cout << "Successfully loaded shaders from project root directory" << std::endl;
+                std::cout << "成功从项目根目录加载着色器" << std::endl;
             }
             catch(std::ifstream::failure& e2) {
-                std::cerr << "ERROR: Failed to read shader files from both build and project directory" << std::endl;
+                std::cerr << "错误: 从构建目录和项目目录都无法读取着色器文件" << std::endl;
                 
-                // If we can't load the file, use hardcoded shaders
-                // This will be handled in writeShaderFiles() function
+                // 如果无法加载文件，使用硬编码着色器
+                // 这将在writeShaderFiles()函数中处理
             }
         }
         
         const char* vShaderCode = vertexCode.c_str();
         const char* fShaderCode = fragmentCode.c_str();
         
-        // 2. Compile shaders
+        // 2. 编译着色器
         unsigned int vertex, fragment;
         int success;
         char infoLog[512];
         
-        // Vertex shader
+        // 顶点着色器
         vertex = glCreateShader(GL_VERTEX_SHADER);
         glShaderSource(vertex, 1, &vShaderCode, NULL);
         glCompileShader(vertex);
         checkCompileErrors(vertex, "VERTEX");
         
-        // Fragment shader
+        // 片段着色器
         fragment = glCreateShader(GL_FRAGMENT_SHADER);
         glShaderSource(fragment, 1, &fShaderCode, NULL);
         glCompileShader(fragment);
         checkCompileErrors(fragment, "FRAGMENT");
         
-        // Shader program
+        // 着色器程序
         ID = glCreateProgram();
         glAttachShader(ID, vertex);
         glAttachShader(ID, fragment);
         glLinkProgram(ID);
         checkCompileErrors(ID, "PROGRAM");
         
-        // Delete shaders - they're linked to our program and no longer needed
+        // 删除着色器 - 它们已链接到程序中，不再需要
         glDeleteShader(vertex);
         glDeleteShader(fragment);
     }
 
-    // Activate shader
+    // 激活着色器
     void use() {
         glUseProgram(ID);
     }
 
-    // Uniform utility functions
+    // Uniform工具函数
     void setBool(const std::string &name, bool value) const {
         glUniform1i(glGetUniformLocation(ID, name.c_str()), (int)value);
     }
@@ -603,7 +601,7 @@ public:
         // Water wave strength
         float waveStrength = 1.2f; // 增加波浪强度
         // Lightning settings
-        float lightningFrequency = 8.0f; // 闪电频率（秒）
+        float lightningFrequency = 3.0f; // 闪电频率（秒）- 缩短间隔让闪电更频繁
         float lightningIntensity = 1.0f; // 闪电强度
         bool lightningEnabled = true;
         // Ripple visibility
@@ -627,11 +625,14 @@ public:
         float rippleVolume = 0.4f;
     } audioConfig;
     
-    // Time tracking
+    // 时间追踪
     float lastFrame = 0.0f;
     float deltaTime = 0.0f;
     float rainAccumulator = 0.0f;
-    float totalTime = 0.0f; // Total runtime
+    float totalTime = 0.0f; // 总运行时间
+    
+    // 手动闪电触发
+    bool manualLightningRequested = false;
     
     // Performance metrics
     struct {
@@ -653,7 +654,7 @@ public:
     ambientRainSound(nullptr),
     waterRippleSound(nullptr),
     lightningTimer(0.0f),
-    nextLightningTime(5.0f) {
+    nextLightningTime(2.0f) { // 缩短初始等待时间
     }
     
     ~RainSimulation() {
@@ -1787,28 +1788,39 @@ public:
         if (keys[GLFW_KEY_ESCAPE])
             glfwSetWindowShouldClose(window, true);
             
-        // Camera movement with smooth transitions
+        // 手动触发闪电 - L键
+        static bool lKeyPressed = false;
+        if (keys[GLFW_KEY_L] && !lKeyPressed) {
+            manualLightningRequested = true;
+            lKeyPressed = true;
+            std::cout << "手动触发闪电！" << std::endl;
+        }
+        if (!keys[GLFW_KEY_L]) {
+            lKeyPressed = false;
+        }
+            
+        // 相机移动（平滑过渡）
         float cameraSpeed = config.cameraSpeed * deltaTime;
         
-        // Forward/backward
+        // 前后移动
         if (keys[GLFW_KEY_W])
             cameraPos += cameraSpeed * cameraFront;
         if (keys[GLFW_KEY_S])
             cameraPos -= cameraSpeed * cameraFront;
         
-        // Left/right
+        // 左右移动
         if (keys[GLFW_KEY_A])
             cameraPos -= glm::normalize(glm::cross(cameraFront, cameraUp)) * cameraSpeed;
         if (keys[GLFW_KEY_D])
             cameraPos += glm::normalize(glm::cross(cameraFront, cameraUp)) * cameraSpeed;
         
-        // Up/down - Changed to Space and Left Control
+        // 上下移动 - 改为空格键和左Ctrl键
         if (keys[GLFW_KEY_SPACE])
             cameraPos += cameraUp * cameraSpeed;
         if (keys[GLFW_KEY_LEFT_CONTROL])
             cameraPos -= cameraUp * cameraSpeed;
             
-        // Camera rotation - arrow keys
+        // 相机旋转 - 方向键
         float rotateSpeed = 30.0f * deltaTime;
         if (keys[GLFW_KEY_UP])
             cameraPitch += rotateSpeed;
@@ -1819,13 +1831,13 @@ public:
         if (keys[GLFW_KEY_RIGHT])
             cameraYaw += rotateSpeed;
             
-        // Constrain camera pitch
+        // 限制相机俯仰角
         if (cameraPitch > 89.0f)
             cameraPitch = 89.0f;
         if (cameraPitch < -89.0f)
             cameraPitch = -89.0f;
             
-        // Update camera front vector
+        // 更新相机前向量
         glm::vec3 front;
         front.x = cos(glm::radians(cameraYaw)) * cos(glm::radians(cameraPitch));
         front.y = sin(glm::radians(cameraPitch));
@@ -1841,18 +1853,19 @@ public:
             generateRaindrops();
         }
         
-        // Update raindrops
+        // 更新雨滴（性能优化：预分配内存）
+        raindrops.reserve(config.rainDensity);
         for (auto it = raindrops.begin(); it != raindrops.end();) {
             bool createRipple = it->update(deltaTime);
             
             if (createRipple) {
-                // Create water ripple
+                // 创建水面涟漪
                 WaterRipple ripple;
                 ripple.init(it->position, it->color);
                 ripples.push_back(ripple);
                 
-                // Play water ripple sound (probabilistic, not for every ripple)
-                if (rand() % 100 < 30) { // 30% chance to play ripple sound
+                // 播放水面涟漪声音（概率性播放，不是每个涟漪都播放）
+                if (rand() % 100 < 25) { // 降低到25%以减少音频处理负担
                     playRippleSound(ripple.position);
                 }
             }
@@ -1890,21 +1903,29 @@ public:
             }
         }
         
-        // Update lightning system
+        // 更新闪电系统
         if (config.lightningEnabled) {
             lightningTimer += deltaTime;
             
-            // Generate new lightning
+            // 检查手动闪电触发
+            if (manualLightningRequested) {
+                generateLightning();
+                manualLightningRequested = false;
+                std::cout << "手动闪电已生成！" << std::endl;
+            }
+            
+            // 生成新闪电（自动）
             if (lightningTimer >= nextLightningTime) {
                 generateLightning();
                 lightningTimer = 0.0f;
-                // Random interval for next lightning
+                // 下次闪电的随机间隔
                 nextLightningTime = config.lightningFrequency + (static_cast<float>(rand()) / RAND_MAX) * config.lightningFrequency;
             }
             
-            // Update existing lightning
+            // 更新现有闪电（优化：使用reserve避免频繁内存分配）
             for (auto it = lightnings.begin(); it != lightnings.end();) {
-                if (!it->update(deltaTime)) {
+                bool shouldKeep = it->update(deltaTime);
+                if (!shouldKeep) {
                     it = lightnings.erase(it);
                 } else {
                     ++it;
@@ -1914,10 +1935,10 @@ public:
     }
     
     void generateRaindrops() {
-        int raindropsToGenerate = config.rainDensity / 4; // 增加生成数量
+        int raindropsToGenerate = config.rainDensity / 4; // 生成数量
         
-        for (int i = 0; i < raindropsToGenerate; ++i) {
-            if (rand() % 100 < 80) { // 大幅提高生成概率到80%
+        for (int i = 0; i < raindropsToGenerate; ++i) {  
+            if (rand() % 100 < 75) { // 稍微降低生成概率以提高性能
                 Raindrop raindrop;
                 
                 // 改进的位置生成策略 - 创造更好的层次感
@@ -1987,11 +2008,11 @@ public:
         glClearColor(0.01f, 0.02f, 0.05f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         
-        // 视图/投影矩阵
+        // 视图/投影矩阵（性能优化：避免重复计算）
+        static glm::mat4 projection = glm::perspective(glm::radians(45.0f), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 1000.0f);
         glm::mat4 view = glm::lookAt(cameraPos, cameraPos + cameraFront, cameraUp);
-        glm::mat4 projection = glm::perspective(glm::radians(45.0f), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 1000.0f);
         
-        // 顺序很重要：先天空、再月亮和星星、然后水面、最后雨滴、波纹和闪电
+        // 渲染顺序：先天空、再月亮和星星、然后水面、最后雨滴、波纹和闪电
         renderSky(view, projection);
         renderMoon(view, projection);
         renderStars(view, projection);
@@ -2003,11 +2024,13 @@ public:
         // 渲染ImGui界面
         renderUI();
 
-        // 检查渲染错误
+        // 检查渲染错误（仅在调试模式下）
+        #ifdef _DEBUG
         GLenum err;
         while((err = glGetError()) != GL_NO_ERROR) {
-            std::cout << "Render error: " << err << std::endl;
+            std::cout << "渲染错误: " << err << std::endl;
         }
+        #endif
     }
 
     void renderWater(const glm::mat4& view, const glm::mat4& projection) {
@@ -2330,6 +2353,8 @@ public:
     void renderLightning(const glm::mat4& view, const glm::mat4& projection) {
         if (lightnings.empty()) return;
         
+        std::cout << "正在渲染 " << lightnings.size() << " 个闪电" << std::endl;
+        
         lightningShader->use();
         lightningShader->setMat4("view", view);
         lightningShader->setMat4("projection", projection);
@@ -2343,7 +2368,13 @@ public:
         glBindVertexArray(lightningVAO);
         
         for (const auto& lightning : lightnings) {
-            if (!lightning.active || lightning.segments.size() < 2) continue;
+            if (!lightning.active || lightning.segments.size() < 2) {
+                std::cout << "跳过闪电 - 激活状态: " << (lightning.active ? "true" : "false") 
+                          << ", 段数: " << lightning.segments.size() << std::endl;
+                continue;
+            }
+            
+            std::cout << "渲染闪电 - 段数: " << lightning.segments.size() << ", 强度: " << lightning.intensity << std::endl;
             
             // 渲染主闪电路径
             for (int i = 0; i < lightning.segments.size() - 1; i++) {
@@ -2360,14 +2391,14 @@ public:
                 glm::mat4 model = glm::mat4(1.0f);
                 lightningShader->setMat4("model", model);
                 
-                // 闪电颜色和强度
-                glm::vec3 lightningColor = lightning.color * lightning.intensity * config.lightningIntensity;
+                // 闪电颜色和强度 - 增强亮度
+                glm::vec3 lightningColor = lightning.color * lightning.intensity * config.lightningIntensity * 5.0f;
                 lightningShader->setVec3("lightningColor", lightningColor);
                 lightningShader->setFloat("intensity", lightning.intensity);
                 
-                // 动态线条宽度
-                float lineWidth = lightning.thickness * lightning.intensity;
-                glLineWidth(std::max(lineWidth, 1.0f));
+                // 动态线条宽度 - 增加宽度
+                float lineWidth = lightning.thickness * lightning.intensity * 3.0f;
+                glLineWidth(std::max(lineWidth, 2.0f));
                 
                 // 绘制闪电段
                 glDrawArrays(GL_LINES, 0, 2);
@@ -2387,14 +2418,14 @@ public:
                     glm::mat4 model = glm::mat4(1.0f);
                     lightningShader->setMat4("model", model);
                     
-                    // 光晕颜色 - 逐层衰减
-                    float glowIntensity = lightning.intensity * (0.5f / glow);
-                    glm::vec3 glowColor = lightning.color * glowIntensity * 0.3f;
+                    // 光晕颜色 - 逐层衰减但增强基础亮度
+                    float glowIntensity = lightning.intensity * (0.8f / glow);
+                    glm::vec3 glowColor = lightning.color * glowIntensity * 2.0f;
                     lightningShader->setVec3("lightningColor", glowColor);
                     lightningShader->setFloat("intensity", glowIntensity);
                     
                     // 光晕线条宽度
-                    float glowWidth = lightning.thickness * (1.0f + glow * 2.0f) * lightning.intensity;
+                    float glowWidth = lightning.thickness * (1.0f + glow * 3.0f) * lightning.intensity;
                     glLineWidth(std::max(glowWidth, 1.0f));
                     
                     glDrawArrays(GL_LINES, 0, 2);
@@ -2409,18 +2440,18 @@ public:
     }
     
     void renderUI() {
-        // Start ImGui frame
+        // 开始ImGui帧
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
         
-        // Create control panel
+        // 创建控制面板
         ImGui::Begin("Control Panel");
         
         ImGui::Text("Colorful Rain Simulation");
         ImGui::Separator();
         
-        // Stats display
+        // 统计信息显示
         char fpsText[32];
         sprintf(fpsText, "FPS: %.1f", performanceMetrics.smoothedFps);
         ImGui::Text(fpsText);
@@ -2430,15 +2461,15 @@ public:
         
         ImGui::Separator();
         
-        // Rain settings
+        // 雨滴设置
         if (ImGui::CollapsingHeader("Rain Settings")) {
-            ImGui::SliderInt("Rain Density", &config.rainDensity, 50, 800); // 提高密度范围
-            ImGui::SliderFloat("Min Raindrop Size", &config.minRaindropSize, 0.3f, 1.5f); // 调整雨滴大小范围
-            ImGui::SliderFloat("Max Raindrop Size", &config.maxRaindropSize, 1.0f, 4.0f); // 大幅提高最大大小
+            ImGui::SliderInt("Rain Density", &config.rainDensity, 50, 600); // 适度降低最大密度以提高性能
+            ImGui::SliderFloat("Min Raindrop Size", &config.minRaindropSize, 0.3f, 1.5f);
+            ImGui::SliderFloat("Max Raindrop Size", &config.maxRaindropSize, 1.0f, 4.0f);
             ImGui::SliderFloat("Min Raindrop Speed", &config.minRaindropSpeed, 1.0f, 5.0f);
             ImGui::SliderFloat("Max Raindrop Speed", &config.maxRaindropSpeed, 3.0f, 10.0f);
             
-            // Color editing
+            // 颜色编辑
             if (ImGui::TreeNode("Raindrop Colors")) {
                 for (int i = 0; i < config.raindropColors.size(); i++) {
                     char colorName[32];
@@ -2456,15 +2487,15 @@ public:
             }
         }
         
-        // Water settings
+        // 水面设置
         if (ImGui::CollapsingHeader("Water Settings")) {
-            ImGui::SliderFloat("Wave Strength", &config.waveStrength, 0.0f, 3.0f); // 增加波浪强度范围
-            ImGui::SliderFloat("Max Ripple Size", &config.maxRippleSize, 20.0f, 150.0f); // 大幅增加涟漪大小范围
-            ImGui::SliderFloat("Ripple Visibility", &config.rippleVisibility, 0.5f, 5.0f); // 新增涟漪可见度控制
-            ImGui::SliderInt("Ripple Rings", &config.rippleRings, 2, 8); // 增加涟漪环数范围
+            ImGui::SliderFloat("Wave Strength", &config.waveStrength, 0.0f, 3.0f);
+            ImGui::SliderFloat("Max Ripple Size", &config.maxRippleSize, 20.0f, 120.0f); // 适度降低最大值以提高性能
+            ImGui::SliderFloat("Ripple Visibility", &config.rippleVisibility, 0.5f, 5.0f);
+            ImGui::SliderInt("Ripple Rings", &config.rippleRings, 2, 6); // 减少最大环数以提高性能
             ImGui::SliderFloat("Update Interval", &config.updateInterval, 0.01f, 0.1f);
             
-            // Ripple color editing
+            // 涟漪颜色编辑
             if (ImGui::TreeNode("Ripple Colors")) {
                 for (int i = 0; i < config.rippleColors.size(); i++) {
                     char colorName[32];
@@ -2482,31 +2513,38 @@ public:
             }
         }
         
-        // Lightning settings - 新增闪电设置
+        // 闪电设置
         if (ImGui::CollapsingHeader("Lightning Settings")) {
             ImGui::Checkbox("Enable Lightning", &config.lightningEnabled);
             ImGui::SliderFloat("Lightning Frequency (s)", &config.lightningFrequency, 2.0f, 20.0f);
             ImGui::SliderFloat("Lightning Intensity", &config.lightningIntensity, 0.1f, 3.0f);
             
             ImGui::Text("Active Lightning: %lu", lightnings.size());
+            
+            if (ImGui::Button("Manual Lightning (L Key)")) {
+                manualLightningRequested = true;
+            }
+            ImGui::SameLine();
+            ImGui::Text("Press L key also works");
         }
         
-        // Camera settings
+        // 相机设置
         if (ImGui::CollapsingHeader("Camera Settings")) {
             ImGui::SliderFloat("Camera Speed", &config.cameraSpeed, 1.0f, 30.0f);
             ImGui::Text("Controls:");
             ImGui::BulletText("WASD: Move camera");
             ImGui::BulletText("Space/Ctrl: Up/Down");
             ImGui::BulletText("Arrow Keys: Rotate view");
+            ImGui::BulletText("L Key: Trigger lightning");
             
             ImGui::Separator();
             
-            // Current camera info
+            // 当前相机信息
             ImGui::Text("Camera Position: (%.1f, %.1f, %.1f)", cameraPos.x, cameraPos.y, cameraPos.z);
             ImGui::Text("Look Direction: (%.1f, %.1f, %.1f)", cameraFront.x, cameraFront.y, cameraFront.z);
         }
         
-        // Audio settings
+        // 音频设置
         if (ImGui::CollapsingHeader("Audio Settings")) {
             bool soundEnabledChanged = ImGui::Checkbox("Enable Sound", &audioConfig.soundEnabled);
             
@@ -2515,7 +2553,7 @@ public:
             ImGui::SliderFloat("Ambient Rain Volume", &audioConfig.ambientVolume, 0.0f, 1.0f);
             ImGui::SliderFloat("Ripple Volume", &audioConfig.rippleVolume, 0.0f, 1.0f);
             
-            // Update SDL audio settings when changed
+            // 当设置改变时更新SDL音频设置
             if (ImGui::IsItemEdited() || soundEnabledChanged) {
                 updateAudioSettings();
             }
@@ -2523,7 +2561,7 @@ public:
         
         ImGui::End();
         
-        // Render ImGui
+        // 渲染ImGui
         ImGui::Render();
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
     }
@@ -3063,7 +3101,7 @@ void main() {
     }
 }
 
-// Use SDL-compatible main function
+// 使用SDL兼容的main函数
 #ifdef __WINDOWS__
 int WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nShowCmd) {
 #else
@@ -3071,25 +3109,25 @@ int main(int argc, char* argv[]) {
 #endif
 
     setConsoleCodePage();
-    // Initialize SDL
+    // 初始化SDL
     if (SDL_Init(SDL_INIT_AUDIO) < 0) {
-        std::cerr << "Failed to initialize SDL: " << SDL_GetError() << std::endl;
+        std::cerr << "SDL初始化失败: " << SDL_GetError() << std::endl;
         return 1;
     }
     
-    // Write shader files
+    // 写入着色器文件
     writeShaderFiles();
     
-    // Set random seed
+    // 设置随机种子
     srand(static_cast<unsigned int>(time(nullptr)));
     
-    // Create and run simulation
+    // 创建并运行模拟
     RainSimulation simulation;
     if (simulation.init()) {
         simulation.run();
     }
     
-    // Clean up SDL before exit
+    // 退出前清理SDL
     SDL_Quit();
     
     return 0;

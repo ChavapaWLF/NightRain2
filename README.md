@@ -1,191 +1,222 @@
-# Colorful Rain Simulation
+# 彩色雨滴模拟器 / Colorful Rain Simulation
 
-A real-time OpenGL-based simulation of colorful raindrops falling onto a water surface at night. This application creates a serene night scene with a dynamic water surface, colorful rain, and beautiful ripple effects.
+一个基于OpenGL的实时3D彩色雨滴模拟程序，具有逼真的雨滴效果、水面波纹、闪电系统和动态天空背景。
 
-![Colorful Rain Simulation](screenshots/preview.png)
+## ✨ 主要功能
 
-## Features
+- **逼真的雨滴效果**: 多层次彩色雨滴，包含拖尾效果和动态大小
+- **水面波纹系统**: 雨滴落水时产生的动态涟漪效果
+- **闪电系统**: 自动和手动触发的闪电效果，增强视觉冲击力
+- **动态天空背景**: 夜空渐变、星星闪烁、月亮光晕
+- **音效系统**: 雨滴声、环境雨声、涟漪声音效果
+- **实时参数调节**: 通过ImGui界面实时调整各种效果参数
+- **流畅的相机控制**: 支持自由移动和旋转视角
 
-- Real-time water surface simulation with dynamic wave patterns
-- Colorful raindrops with particle effects and trails
-- Interactive ripple effects when raindrops hit the water
-- Immersive night sky background with stars and moon
-- Audio effects for raindrop splashes and ambient rain sounds
-- Customizable parameters through a user-friendly interface
-- Smooth camera controls for exploring the scene
+## 🎮 控制方式
 
-## System Requirements
+### 相机控制
+- **WASD**: 前后左右移动相机
+- **空格键**: 相机上升
+- **左Ctrl**: 相机下降
+- **方向键**: 旋转视角
+- **L键**: 手动触发闪电效果
 
-- Windows, macOS, or Linux operating system
-- Graphics card with OpenGL 3.3+ support
-- 4GB RAM (minimum)
-- 100MB disk space
-- Audio output device (optional, for sound effects)
+### 界面控制
+- **ESC**: 退出程序
+- **鼠标**: 在ImGui控制面板中调节参数
 
-## Dependencies
+## 🛠️ 编译依赖
 
-The project requires the following libraries:
+### 必需库
+- **OpenGL 3.3+**
+- **GLFW 3.x**: 窗口管理
+- **GLEW**: OpenGL扩展加载
+- **GLM**: 数学库
+- **SDL2**: 音频处理
+- **SDL2_mixer**: 音频混合
+- **ImGui**: 用户界面
+- **stb_image**: 图像加载
+- **stb_image_write**: 图像保存
 
-- **OpenGL** (3.3 or higher)
-- **GLEW** (OpenGL Extension Wrangler Library)
-- **GLFW3** (for window creation and input handling)
-- **GLM** (OpenGL Mathematics)
-- **SDL2** (Simple DirectMedia Layer, for audio)
-- **SDL2_mixer** (for advanced audio capabilities)
-- **ImGui** (for the user interface)
-- **stb_image** (for texture loading)
+### 编译指令
 
-## Building the Project
+#### Windows (Visual Studio)
+```bash
+mkdir build
+cd build
+cmake .. -G "Visual Studio 16 2019"
+cmake --build . --config Release
+```
 
-### Prerequisites
+#### Windows (MinGW)
+```bash
+mkdir build
+cd build
+cmake .. -G "MinGW Makefiles"
+make
+```
 
-Ensure you have CMake (3.10 or higher) and a C++17 compatible compiler installed.
+#### Linux
+```bash
+mkdir build
+cd build
+cmake ..
+make
+```
 
-### Building with CMake
+#### macOS
+```bash
+mkdir build
+cd build
+cmake ..
+make
+```
 
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/ChavapaWLF/NightRain2.git
-   cd NightRain2
-   ```
-
-2. Create a build directory:
-   ```bash
-   mkdir build
-   cd build
-   ```
-
-3. Configure and build the project:
-   ```bash
-   cmake ..
-   ```
-
-4. Compile:
-   - On Windows with MinGW:
-     ```bash
-     mingw32-make
-     ```
-   - On Windows with MSVC:
-     ```bash
-     cmake --build . --config Release
-     ```
-   - On macOS/Linux:
-     ```bash
-     make
-     ```
-
-5. Run the application:
-   ```bash
-   ./ColorfulRainSimulation
-   ```
-
-### Required Resources
-
-Before running, ensure the following directories exist with appropriate textures:
-
-- `textures/waternormal.jpeg` (1024x1024 pixels)
-- `textures/waterDuDv.jpg` (512x512 pixels)
-- `textures/waterReflection.jpg` (1024x1024 pixels)
-- `textures/raindrop_glow.png` (128x128 pixels, with alpha channel)
-- `textures/night_sky.jpg` (2048x1024 pixels)
-
-Optional audio files:
-- `audio/raindrop_splash.wav`
-- `audio/ambient_rain.mp3`
-- `audio/water_ripple.wav`
-
-## Project Structure
+## 📁 项目结构
 
 ```
 ColorfulRainSimulation/
-├── include/                  # Header files
-│   ├── GL/                   # OpenGL headers
-│   ├── glm/                  # GLM library headers
-│   ├── SDL2/                 # SDL2 headers
-│   ├── imgui/                # ImGui library
-│   └── stb/                  # stb_image library
-├── lib/                      # Library files
-├── shaders/                  # GLSL shader files
-│   ├── water.vert            # Water vertex shader
-│   ├── water.frag            # Water fragment shader
-│   ├── raindrop.vert         # Raindrop vertex shader
-│   ├── raindrop.frag         # Raindrop fragment shader
-│   ├── ripple.vert           # Ripple vertex shader
-│   └── ripple.frag           # Ripple fragment shader
-├── textures/                 # Texture files
-├── audio/                    # Audio files
-├── main.cpp                  # Main application code
-├── CMakeLists.txt            # CMake build script
-├── filesystem_compat.h       # Filesystem compatibility layer
-└── README.md                 # This file
+├── main.cpp                 # 主程序文件
+├── filesystem_compat.h      # 文件系统兼容层
+├── CMakeLists.txt           # CMake配置文件
+├── README.md                # 项目说明文档
+├── shaders/                 # 着色器文件夹（自动生成）
+│   ├── water.vert          # 水面顶点着色器
+│   ├── water.frag          # 水面片段着色器
+│   ├── raindrop.vert       # 雨滴顶点着色器
+│   ├── raindrop.frag       # 雨滴片段着色器
+│   ├── ripple.vert         # 涟漪顶点着色器
+│   ├── ripple.frag         # 涟漪片段着色器
+│   ├── sky.vert            # 天空顶点着色器
+│   ├── sky.frag            # 天空片段着色器
+│   ├── lightning.vert      # 闪电顶点着色器
+│   └── lightning.frag      # 闪电片段着色器
+├── textures/                # 纹理文件夹（自动生成）
+│   ├── waternormal.jpeg    # 水面法线贴图
+│   ├── waterDuDv.jpg       # 水面扭曲贴图
+│   ├── waterReflection.jpg # 水面反射贴图
+│   ├── raindrop_glow.png   # 雨滴发光贴图
+│   └── night_sky.jpg       # 夜空背景贴图
+├── audio/                   # 音频文件夹（需要手动添加）
+│   ├── raindrop_splash.wav # 雨滴落水音效
+│   ├── ambient_rain.mp3    # 环境雨声
+│   └── water_ripple.wav    # 涟漪音效
+└── imgui/                   # ImGui库文件
+    └── ...
 ```
 
-## Controls
+## 🎨 参数调节
 
-- **W/A/S/D**: Move camera forward/left/backward/right
-- **Space**: Move camera up
-- **Ctrl**: Move camera down
-- **Arrow Keys**: Rotate camera view
-- **ESC**: Exit application
+程序运行时，左侧会显示控制面板，可以实时调节以下参数：
 
-## Parameter Adjustment
+### 雨滴设置
+- **雨滴密度**: 控制雨滴生成数量
+- **雨滴大小**: 最小/最大雨滴尺寸
+- **雨滴速度**: 最小/最大下落速度
+- **雨滴颜色**: 5种可调节的彩色配置
 
-The application includes a control panel that allows you to adjust various parameters:
+### 水面设置
+- **波浪强度**: 水面波动幅度
+- **最大涟漪大小**: 雨滴落水时涟漪扩散范围
+- **涟漪可见度**: 涟漪的透明度和亮度
+- **涟漪环数**: 每个涟漪的同心环数量
+- **涟漪颜色**: 5种可调节的涟漪颜色
 
-### Rain Settings
-- **Rain Density**: Controls how many raindrops are generated
-- **Min/Max Raindrop Size**: Adjusts the size range of raindrops
-- **Min/Max Raindrop Speed**: Controls how fast raindrops fall
-- **Raindrop Colors**: Customize the colors of raindrops
+### 闪电设置
+- **启用闪电**: 开关闪电效果
+- **闪电频率**: 自动闪电间隔时间
+- **闪电强度**: 闪电亮度和可见度
+- **手动触发**: 按钮或L键手动生成闪电
 
-### Water Settings
-- **Wave Strength**: Controls the intensity of water waves
-- **Max Ripple Size**: Adjusts the maximum size of ripples
-- **Ripple Rings**: Sets the number of concentric rings in each ripple
-- **Update Interval**: Controls how frequently the simulation updates
-- **Ripple Colors**: Customize the colors of water ripples
+### 相机设置
+- **相机速度**: 移动和旋转速度
 
-### Camera Settings
-- **Camera Speed**: Adjusts how quickly the camera moves
-- **Current position and direction** information is displayed
+### 音频设置
+- **启用声音**: 总开关
+- **主音量**: 整体音量控制
+- **雨滴音量**: 雨滴落水音效音量
+- **环境音量**: 背景雨声音量
+- **涟漪音量**: 涟漪音效音量
 
-### Audio Settings
-- **Enable Sound**: Toggle sound effects on/off
-- **Master Volume**: Overall volume control
-- **Raindrop Volume**: Volume of raindrop splash sounds
-- **Ambient Rain Volume**: Volume of background rain
-- **Ripple Volume**: Volume of ripple sound effects
+## 🔧 性能优化
 
-## License
+### 已实施的优化
+- **内存预分配**: 为雨滴轨迹和闪电路径预分配内存
+- **视锥裁剪**: 只渲染可见范围内的对象
+- **LOD系统**: 远距离对象使用简化渲染
+- **批量渲染**: 减少GPU状态切换
+- **智能更新**: 只在需要时更新对象状态
 
-This project is licensed under the MIT License - see below for details:
+### 建议设置（低端设备）
+- 雨滴密度: 100-150
+- 最大涟漪大小: 40-60
+- 涟漪环数: 3-4
+- 星星数量: 减少到80个
 
-```
-MIT License
+## 🎵 音频文件获取
 
-Copyright (c) 2025 [ChavapaWLF]
+由于版权原因，音频文件需要自行添加。建议的音频文件格式和长度：
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+- **raindrop_splash.wav**: 0.5-1秒的水滴声
+- **ambient_rain.mp3**: 循环播放的雨声背景音
+- **water_ripple.wav**: 0.3-0.8秒的涟漪声
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+可以从免费音效网站获取，如：
+- Freesound.org
+- Zapsplat.com
+- Adobe Audition内置音效
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-```
+## 🐛 故障排除
 
-## Acknowledgements
+### 常见问题
 
-- Special thanks to the developers of all the libraries used in this project
-- Inspiration drawn from natural rain and water surface physics
-- Thanks to everyone who contributed to testing and providing feedback
+1. **编译错误 - 找不到库文件**
+   - 确保安装了所有依赖库
+   - 检查CMake是否正确找到库路径
+
+2. **运行时黑屏**
+   - 检查显卡驱动是否支持OpenGL 3.3
+   - 尝试更新显卡驱动
+
+3. **无声音**
+   - 检查audio文件夹是否存在音频文件
+   - 确认SDL2_mixer正确安装
+
+4. **性能较低**
+   - 降低雨滴密度和涟漪大小
+   - 减少星星数量
+   - 关闭音效
+
+5. **着色器编译失败**
+   - 确保shaders文件夹存在
+   - 程序会自动生成默认着色器
+
+## 🤝 贡献
+
+欢迎提交Bug报告、功能请求或代码贡献！
+
+## 📄 许可证
+
+本项目仅供学习和研究使用。
+
+## 📸 截图预览
+
+程序运行时的主要特性：
+- 夜空中闪烁的星星和月亮
+- 五彩斑斓的雨滴从天空落下
+- 雨滴接触水面时产生的美丽涟漪
+- 壮观的闪电效果
+- 实时参数调节界面
+
+## 🔮 未来计划
+
+- [ ] 添加更多天气效果（雪、雾等）
+- [ ] 实现水面反射和折射
+- [ ] 添加更多音效和背景音乐
+- [ ] 支持VR设备
+- [ ] 添加粒子特效系统
+- [ ] 支持自定义天空盒
+
+---
+
+享受这个美丽的雨滴模拟世界吧！🌧️⚡
