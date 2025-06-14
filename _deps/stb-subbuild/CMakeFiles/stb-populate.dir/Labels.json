@@ -1,0 +1,46 @@
+{
+	"sources" : 
+	[
+		{
+			"file" : "E:/github/NightRain2/_deps/stb-subbuild/CMakeFiles/stb-populate"
+		},
+		{
+			"file" : "E:/github/NightRain2/_deps/stb-subbuild/CMakeFiles/stb-populate.rule"
+		},
+		{
+			"file" : "E:/github/NightRain2/_deps/stb-subbuild/CMakeFiles/stb-populate-complete.rule"
+		},
+		{
+			"file" : "E:/github/NightRain2/_deps/stb-subbuild/stb-populate-prefix/src/stb-populate-stamp/stb-populate-build.rule"
+		},
+		{
+			"file" : "E:/github/NightRain2/_deps/stb-subbuild/stb-populate-prefix/src/stb-populate-stamp/stb-populate-configure.rule"
+		},
+		{
+			"file" : "E:/github/NightRain2/_deps/stb-subbuild/stb-populate-prefix/src/stb-populate-stamp/stb-populate-download.rule"
+		},
+		{
+			"file" : "E:/github/NightRain2/_deps/stb-subbuild/stb-populate-prefix/src/stb-populate-stamp/stb-populate-install.rule"
+		},
+		{
+			"file" : "E:/github/NightRain2/_deps/stb-subbuild/stb-populate-prefix/src/stb-populate-stamp/stb-populate-mkdir.rule"
+		},
+		{
+			"file" : "E:/github/NightRain2/_deps/stb-subbuild/stb-populate-prefix/src/stb-populate-stamp/stb-populate-patch.rule"
+		},
+		{
+			"file" : "E:/github/NightRain2/_deps/stb-subbuild/stb-populate-prefix/src/stb-populate-stamp/stb-populate-test.rule"
+		},
+		{
+			"file" : "E:/github/NightRain2/_deps/stb-subbuild/stb-populate-prefix/src/stb-populate-stamp/stb-populate-update.rule"
+		}
+	],
+	"target" : 
+	{
+		"labels" : 
+		[
+			"stb-populate"
+		],
+		"name" : "stb-populate"
+	}
+}

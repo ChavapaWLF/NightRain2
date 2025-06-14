@@ -1,3 +1,0 @@
-"D:\Program Files\CMake\bin\cmake.exe" -E rm -f CMakeFiles\ColorfulRainSimulation.dir/objects.a
-C:\PROGRA~2\mingw64\bin\ar.exe qc CMakeFiles\ColorfulRainSimulation.dir/objects.a @CMakeFiles\ColorfulRainSimulation.dir\objects1.rsp
-C:\PROGRA~2\mingw64\bin\C__~1.EXE -Wl,--whole-archive CMakeFiles\ColorfulRainSimulation.dir/objects.a -Wl,--no-whole-archive -o ColorfulRainSimulation.exe -Wl,--out-implib,libColorfulRainSimulation.dll.a -Wl,--major-image-version,0,--minor-image-version,0 @CMakeFiles\ColorfulRainSimulation.dir\linkLibs.rsp

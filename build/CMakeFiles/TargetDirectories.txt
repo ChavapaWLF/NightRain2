@@ -1,3 +1,0 @@
-E:/github/NightRain2/build/CMakeFiles/ColorfulRainSimulation.dir
-E:/github/NightRain2/build/CMakeFiles/edit_cache.dir
-E:/github/NightRain2/build/CMakeFiles/rebuild_cache.dir

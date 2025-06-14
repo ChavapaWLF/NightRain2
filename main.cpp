@@ -65,7 +65,7 @@ const float POND_SIZE = 500.0f;
 const float WATER_HEIGHT = 0.0f;
 
 // Additional constants for better visuals without textures
-const int STARS_COUNT = 300;      // Number of stars in night sky
+const int STARS_COUNT = 150;      // 减少星星数量，避免过于密集
 const int CLOUD_COUNT = 5;        // Number of clouds
 const float MOON_SIZE = 20.0f;    // Moon size
 const float MOON_X = 70.0f;       // Moon X coordinate
@@ -85,6 +85,85 @@ struct Cloud {
     float size;
     float opacity;
     float speed;
+};
+
+// Lightning structure - 新增闪电结构
+struct Lightning {
+    std::vector<glm::vec3> segments;  // 闪电路径段
+    glm::vec3 color;
+    float intensity;
+    float duration;
+    float currentTime;
+    float thickness;
+    bool active;
+    int branches;  // 分支数量
+    
+    Lightning() : 
+        color(0.9f, 0.9f, 1.0f),
+        intensity(1.0f),
+        duration(0.3f),
+        currentTime(0.0f),
+        thickness(2.0f),
+        active(false),
+        branches(0) {}
+        
+    void generate(const glm::vec3& start, const glm::vec3& end) {
+        segments.clear();
+        
+        glm::vec3 current = start;
+        glm::vec3 target = end;
+        
+        // 主路径
+        int numSegments = 8 + rand() % 6;  // 8-13个段
+        for (int i = 0; i <= numSegments; i++) {
+            float t = float(i) / numSegments;
+            
+            // 基础路径插值
+            glm::vec3 point = glm::mix(start, end, t);
+            
+            // 添加随机偏移创造锯齿效果
+            if (i > 0 && i < numSegments) {
+                float maxOffset = 15.0f * (1.0f - abs(t - 0.5f) * 2.0f);  // 中间偏移更大
+                point.x += (static_cast<float>(rand()) / RAND_MAX - 0.5f) * maxOffset;
+                point.z += (static_cast<float>(rand()) / RAND_MAX - 0.5f) * maxOffset;
+                point.y += (static_cast<float>(rand()) / RAND_MAX - 0.5f) * maxOffset * 0.5f;
+            }
+            
+            segments.push_back(point);
+        }
+        
+        // 随机颜色变化
+        color = glm::vec3(
+            0.7f + static_cast<float>(rand()) / RAND_MAX * 0.3f,  // R: 0.7-1.0
+            0.8f + static_cast<float>(rand()) / RAND_MAX * 0.2f,  // G: 0.8-1.0  
+            0.9f + static_cast<float>(rand()) / RAND_MAX * 0.1f   // B: 0.9-1.0
+        );
+        
+        intensity = 0.8f + static_cast<float>(rand()) / RAND_MAX * 0.4f;
+        duration = 0.2f + static_cast<float>(rand()) / RAND_MAX * 0.4f;
+        thickness = 1.5f + static_cast<float>(rand()) / RAND_MAX * 2.0f;
+        branches = rand() % 3;  // 0-2个分支
+        
+        currentTime = 0.0f;
+        active = true;
+    }
+    
+    bool update(float deltaTime) {
+        if (!active) return false;
+        
+        currentTime += deltaTime;
+        
+        // 强度衰减
+        float progress = currentTime / duration;
+        intensity = (1.0f - progress) * (0.8f + 0.2f * sin(currentTime * 50.0f));
+        
+        if (currentTime >= duration) {
+            active = false;
+            return false;
+        }
+        
+        return true;
+    }
 };
 
 // Shader class
@@ -240,7 +319,7 @@ private:
 // Forward declaration for application class
 class RainSimulation;
 
-// Raindrop class
+// Enhanced Raindrop class with trail effect
 class Raindrop {
 public:
     glm::vec3 position;
@@ -251,10 +330,18 @@ public:
     float lifetime;
     bool visible;
     int state; // 0: falling, 1: entered water, 2: disappeared
-    RainSimulation* simulation; // Pointer to main app for sound functions
-    float brightness; // Brightness variation
-    float twinkleSpeed; // Twinkle speed
-    float trail; // Raindrop trail length
+    RainSimulation* simulation;
+    float brightness;
+    float twinkleSpeed;
+    
+    // 新增拖尾效果相关属性
+    std::vector<glm::vec3> trailPositions;  // 拖尾位置历史
+    std::vector<float> trailAlphas;         // 拖尾透明度历史
+    int maxTrailLength;                     // 最大拖尾长度
+    float trailUpdateTime;                  // 拖尾更新计时器
+    float trailUpdateInterval;              // 拖尾更新间隔
+    float distanceFromCamera;               // 距离摄像机的距离
+    float layerDepth;                       // 层次深度 (0=近, 1=远)
 
     Raindrop() : 
         position(0.0f),
@@ -268,36 +355,82 @@ public:
         simulation(nullptr),
         brightness(1.0f),
         twinkleSpeed(0.0f),
-        trail(0.0f) {
+        maxTrailLength(8),
+        trailUpdateTime(0.0f),
+        trailUpdateInterval(0.05f),
+        distanceFromCamera(0.0f),
+        layerDepth(0.0f) {
+        trailPositions.reserve(maxTrailLength);
+        trailAlphas.reserve(maxTrailLength);
     }
 
     void init(const glm::vec3& _position, const glm::vec3& _color, RainSimulation* _simulation) {
         position = _position;
         color = _color;
         simulation = _simulation;
+        
+        // 根据距离调整雨滴属性 - 实现层次感
+        distanceFromCamera = glm::length(_position - glm::vec3(0.0f, 60.0f, 120.0f)); // 假设摄像机位置
+        layerDepth = std::min(distanceFromCamera / 200.0f, 1.0f); // 0-1范围
+        
         velocity = glm::vec3(
-            (static_cast<float>(rand()) / RAND_MAX - 0.5f) * 0.5f, // Slight horizontal movement
-            -2.0f - static_cast<float>(rand()) / RAND_MAX * 3.0f,  // More velocity variation
-            (static_cast<float>(rand()) / RAND_MAX - 0.5f) * 0.5f  // Slight front/back movement
+            (static_cast<float>(rand()) / RAND_MAX - 0.5f) * 1.0f, // 增加水平运动
+            -3.0f - static_cast<float>(rand()) / RAND_MAX * 5.0f,  // 更大的垂直速度变化
+            (static_cast<float>(rand()) / RAND_MAX - 0.5f) * 1.0f
         );
-        size = 0.1f + static_cast<float>(rand()) / RAND_MAX * 0.15f;
-        lifespan = 3.0f + static_cast<float>(rand()) / RAND_MAX * 3.0f;
+        
+        // 近处雨滴更大更慢，远处雨滴更小更快
+        size = (2.0f - layerDepth) * (1.0f + static_cast<float>(rand()) / RAND_MAX * 2.0f);
+        velocity.y *= 0.7f + layerDepth * 0.6f; // 远处雨滴下落更快
+        
+        lifespan = 4.0f + static_cast<float>(rand()) / RAND_MAX * 4.0f;
         lifetime = 0.0f;
         visible = true;
         state = 0;
         brightness = 0.8f + static_cast<float>(rand()) / RAND_MAX * 0.4f;
         twinkleSpeed = 1.0f + static_cast<float>(rand()) / RAND_MAX * 5.0f;
-        trail = 0.5f + static_cast<float>(rand()) / RAND_MAX * 1.5f; // Trail length
+        
+        // 初始化拖尾系统
+        maxTrailLength = 4 + static_cast<int>((1.0f - layerDepth) * 8); // 近处拖尾更长
+        trailUpdateInterval = 0.03f + layerDepth * 0.02f; // 远处更新更快
+        trailPositions.clear();
+        trailAlphas.clear();
+        trailUpdateTime = 0.0f;
     }
 
-    bool update(float deltaTime);  // Declaration, but implemented after RainSimulation class
+    bool update(float deltaTime);  // Declaration, implemented after RainSimulation class
 
     bool isDead() const {
         return state > 1 || lifetime > lifespan;
     }
+    
+    // 更新拖尾效果
+    void updateTrail(float deltaTime) {
+        trailUpdateTime += deltaTime;
+        
+        if (trailUpdateTime >= trailUpdateInterval) {
+            // 添加当前位置到拖尾
+            trailPositions.insert(trailPositions.begin(), position);
+            trailAlphas.insert(trailAlphas.begin(), brightness);
+            
+            // 保持拖尾长度
+            if (trailPositions.size() > maxTrailLength) {
+                trailPositions.resize(maxTrailLength);
+                trailAlphas.resize(maxTrailLength);
+            }
+            
+            trailUpdateTime = 0.0f;
+        }
+        
+        // 更新拖尾透明度衰减
+        for (int i = 0; i < trailAlphas.size(); i++) {
+            float trailFactor = 1.0f - (float(i) / maxTrailLength);
+            trailAlphas[i] *= 0.98f; // 逐渐衰减
+        }
+    }
 };
 
-// Water ripple class
+// Water ripple class - 优化涟漪渲染
 class WaterRipple {
 public:
     glm::vec3 position;
@@ -309,8 +442,9 @@ public:
     float growthRate;
     float lifetime;
     float maxLifetime;
-    float pulseFrequency; // Pulse frequency
-    float pulseAmplitude; // Pulse amplitude
+    float pulseFrequency;
+    float pulseAmplitude;
+    float waveHeight;  // 新增：水面高度偏移
     
     WaterRipple() : 
         position(0.0f),
@@ -323,48 +457,55 @@ public:
         lifetime(0.0f),
         maxLifetime(2.0f),
         pulseFrequency(0.0f),
-        pulseAmplitude(0.0f) {
+        pulseAmplitude(0.0f),
+        waveHeight(0.0f) {
     }
     
     void init(const glm::vec3& _position, const glm::vec3& _color) {
         position = _position;
-        position.y = WATER_HEIGHT + 0.01f; // 略高于水面
+        position.y = WATER_HEIGHT + 0.02f; // 稍高于水面以确保可见
         color = _color;
-        radius = 1.0f; // 增大初始半径
-        maxRadius = 20.0f + static_cast<float>(rand()) / RAND_MAX * 30.0f; // 大幅增加最大半径
-        thickness = 0.2f + static_cast<float>(rand()) / RAND_MAX * 0.4f; // 增加厚度
-        opacity = 0.7f + static_cast<float>(rand()) / RAND_MAX * 0.3f;
-        growthRate = 5.0f + static_cast<float>(rand()) / RAND_MAX * 8.0f; // 大幅增加生长速率
+        radius = 3.0f; // 更大的初始半径
+        maxRadius = 80.0f + static_cast<float>(rand()) / RAND_MAX * 120.0f; // 超大涟漪
+        thickness = 0.6f + static_cast<float>(rand()) / RAND_MAX * 1.2f; // 更厚的线条
+        opacity = 1.0f; // 完全不透明开始
+        growthRate = 15.0f + static_cast<float>(rand()) / RAND_MAX * 25.0f; // 超快扩散
         lifetime = 0.0f;
-        maxLifetime = 3.0f + static_cast<float>(rand()) / RAND_MAX * 2.0f; // 延长寿命
-        pulseFrequency = 2.0f + static_cast<float>(rand()) / RAND_MAX * 3.0f;
-        pulseAmplitude = 0.2f + static_cast<float>(rand()) / RAND_MAX * 0.3f; // 增加脉冲幅度
+        maxLifetime = 6.0f + static_cast<float>(rand()) / RAND_MAX * 4.0f; // 更长寿命
+        pulseFrequency = 3.0f + static_cast<float>(rand()) / RAND_MAX * 4.0f;
+        pulseAmplitude = 0.3f + static_cast<float>(rand()) / RAND_MAX * 0.4f;
+        waveHeight = 0.1f + static_cast<float>(rand()) / RAND_MAX * 0.2f;
     }
     
     bool update(float deltaTime) {
         lifetime += deltaTime;
         
-        // Non-linear growth - fast at start, then slower
         float progress = lifetime / maxLifetime;
-        float growthFactor = 1.0f - progress * 0.7f;
+        float growthFactor = 1.0f - progress * 0.5f; // 更慢的减速
         radius += growthRate * deltaTime * growthFactor;
         
-        // Add pulsing effect
-        thickness = 0.1f + 0.1f * sinf(lifetime * pulseFrequency) * pulseAmplitude;
+        // 动态厚度变化
+        thickness = 0.3f + 0.4f * sinf(lifetime * pulseFrequency) * pulseAmplitude;
         
-        // Gradually reduce opacity, using a smooth decay curve
-        opacity = 0.8f * (1.0f - powf(progress, 1.5f));
+        // 改进的透明度衰减 - 更慢更自然
+        opacity = 1.0f * (1.0f - powf(progress, 2.0f));
+        
+        // 波浪高度衰减
+        waveHeight = (0.1f + 0.2f * sinf(lifetime * pulseFrequency * 1.2f)) * (1.0f - progress);
         
         return isDead();
     }
     
     bool isDead() const {
-        return radius >= maxRadius || opacity <= 0.05f || lifetime >= maxLifetime;
+        return radius >= maxRadius || opacity <= 0.02f || lifetime >= maxLifetime;
     }
     
-    // Get current thickness, taking pulsing into account
     float getCurrentThickness() const {
         return thickness;
+    }
+    
+    float getCurrentWaveHeight() const {
+        return waveHeight;
     }
 };
 
@@ -382,6 +523,7 @@ public:
     std::unique_ptr<Shader> moonShader;   // New: moon shader
     std::unique_ptr<Shader> starShader;   // New: star shader
     std::unique_ptr<Shader> trailShader;  // New: raindrop trail shader
+    std::unique_ptr<Shader> lightningShader; // New: lightning shader
     
     // Geometry
     unsigned int waterVAO, waterVBO;
@@ -391,6 +533,7 @@ public:
     unsigned int moonVAO, moonVBO;        // New: moon
     unsigned int starVAO, starVBO;        // New: stars
     unsigned int trailVAO, trailVBO;      // New: raindrop trail
+    unsigned int lightningVAO, lightningVBO; // New: lightning
     unsigned int waterIndexCount;  // 水面索引数量
     unsigned int skyVertexCount;   // 天空顶点数量
     
@@ -419,41 +562,52 @@ public:
     std::vector<Star> stars;
     std::vector<Cloud> clouds;
     
+    // New: lightning system
+    std::vector<Lightning> lightnings;
+    float lightningTimer;
+    float nextLightningTime;
+    
     // Configuration
     struct {
-        int rainDensity = 150;  // Increased default rain amount
-        float maxRippleSize = 25.0f;
-        float updateInterval = 0.01f; // More frequent updates
-        float rippleFadeSpeed = 0.02f;
+        int rainDensity = 200;  // 增加雨滴密度
+        float maxRippleSize = 60.0f; // 大幅增加最大涟漪大小
+        float updateInterval = 0.008f; // 更频繁的更新
+        float rippleFadeSpeed = 0.015f;
         std::vector<glm::vec3> raindropColors = {
-            glm::vec3(0.7f, 0.0f, 0.9f), // Purple
-            glm::vec3(0.0f, 0.8f, 1.0f), // Cyan
-            glm::vec3(1.0f, 0.9f, 0.0f), // Yellow
-            glm::vec3(1.0f, 0.3f, 0.0f), // Orange
-            glm::vec3(0.0f, 0.9f, 0.4f)  // Teal
+            glm::vec3(0.9f, 0.2f, 1.0f), // 更亮的紫色
+            glm::vec3(0.2f, 0.9f, 1.0f), // 更亮的青色
+            glm::vec3(1.0f, 1.0f, 0.2f), // 更亮的黄色
+            glm::vec3(1.0f, 0.5f, 0.1f), // 更亮的橙色
+            glm::vec3(0.2f, 1.0f, 0.6f)  // 更亮的青绿色
         };
         // New: ripple colors
         std::vector<glm::vec3> rippleColors = {
-            glm::vec3(0.4f, 0.6f, 1.0f), // Light blue
-            glm::vec3(0.6f, 0.8f, 1.0f), // Light cyan
-            glm::vec3(0.7f, 0.7f, 1.0f), // Light purple
-            glm::vec3(0.5f, 0.7f, 0.9f), // Sky blue
-            glm::vec3(0.4f, 0.7f, 0.7f)  // Teal gray
+            glm::vec3(0.6f, 0.8f, 1.0f), // Light blue
+            glm::vec3(0.8f, 1.0f, 1.0f), // Light cyan
+            glm::vec3(0.9f, 0.9f, 1.0f), // Light purple
+            glm::vec3(0.7f, 0.9f, 1.0f), // Sky blue
+            glm::vec3(0.6f, 0.9f, 0.9f)  // Teal gray
         };
-        // Raindrop size range
-        float minRaindropSize = 0.1f;
-        float maxRaindropSize = 0.3f;
+        // Raindrop size range - 大幅增加雨滴大小
+        float minRaindropSize = 0.8f;
+        float maxRaindropSize = 2.5f;
         // Raindrop speed range
         float minRaindropSpeed = 2.0f;
         float maxRaindropSpeed = 6.0f;
         // Star twinkle speed
         float starTwinkleSpeed = 2.0f;
         // Ripple rings
-        int rippleRings = 3;
+        int rippleRings = 5; // 增加涟漪环数
         // Camera movement speed
         float cameraSpeed = 10.0f;
         // Water wave strength
-        float waveStrength = 0.8f;
+        float waveStrength = 1.2f; // 增加波浪强度
+        // Lightning settings
+        float lightningFrequency = 8.0f; // 闪电频率（秒）
+        float lightningIntensity = 1.0f; // 闪电强度
+        bool lightningEnabled = true;
+        // Ripple visibility
+        float rippleVisibility = 2.0f; // 涟漪可见度增强
         // Show debug info
         bool showDebugInfo = true;
     } config;
@@ -490,14 +644,16 @@ public:
     
     RainSimulation() : 
     window(nullptr),
-    cameraPos(glm::vec3(0.0f, 40.0f, 100.0f)), // 提高高度和距离
-    cameraFront(glm::vec3(0.0f, -0.3f, -1.0f)), // 更倾斜地向下看
+    cameraPos(glm::vec3(0.0f, 60.0f, 120.0f)), // 进一步提高高度和距离以获得更好的全景视角
+    cameraFront(glm::vec3(0.0f, -0.45f, -1.0f)), // 更大角度向下看以覆盖更大的池塘区域
     cameraUp(glm::vec3(0.0f, 1.0f, 0.0f)),
-    cameraPitch(-20.0f), // 更大的俯仰角
+    cameraPitch(-25.0f), // 进一步增大俯仰角
     cameraYaw(-90.0f),
     raindropSound(nullptr),
     ambientRainSound(nullptr),
-    waterRippleSound(nullptr) {
+    waterRippleSound(nullptr),
+    lightningTimer(0.0f),
+    nextLightningTime(5.0f) {
     }
     
     ~RainSimulation() {
@@ -519,6 +675,8 @@ public:
         glDeleteBuffers(1, &starVBO);
         glDeleteVertexArrays(1, &trailVAO);
         glDeleteBuffers(1, &trailVBO);
+        glDeleteVertexArrays(1, &lightningVAO);
+        glDeleteBuffers(1, &lightningVBO);
         
         glDeleteTextures(1, &waterNormalTexture);
         glDeleteTextures(1, &waterDuDvTexture);
@@ -887,6 +1045,7 @@ public:
             moonShader = std::make_unique<Shader>(raindropVertPath, raindropFragPath);
             starShader = std::make_unique<Shader>(raindropVertPath, raindropFragPath);
             trailShader = std::make_unique<Shader>(rippleVertPath, rippleFragPath);
+            lightningShader = std::make_unique<Shader>("shaders/lightning.vert", "shaders/lightning.frag");
         }
         catch (const std::exception& e) {
             std::cerr << "Error loading shaders: " << e.what() << std::endl;
@@ -902,13 +1061,14 @@ public:
             moonShader = std::make_unique<Shader>("shaders/raindrop.vert", "shaders/raindrop.frag");
             starShader = std::make_unique<Shader>("shaders/raindrop.vert", "shaders/raindrop.frag");
             trailShader = std::make_unique<Shader>("shaders/ripple.vert", "shaders/ripple.frag");
+            lightningShader = std::make_unique<Shader>("shaders/lightning.vert", "shaders/lightning.frag");
         }
     }
     
     void createGeometry() {
         // 创建水面平面 - 使用更多顶点以支持更大的水面和更好的波浪效果
         std::vector<float> waterVertices;
-        const int gridSize = 32;  // 增加网格密度
+        const int gridSize = 64;  // 大幅增加网格密度以减少锯齿
         const float cellSize = POND_SIZE / gridSize;
         
         for (int z = 0; z <= gridSize; z++) {
@@ -992,7 +1152,7 @@ public:
         
         // 创建水波环 - 更多节点和细节
         std::vector<float> rippleVertices;
-        const int segments = 128; // 增加细节
+        const int segments = 256; // 大幅增加细节以减少锯齿
         
         // 创建多个同心环
         for (int ring = 0; ring < config.rippleRings; ring++) {
@@ -1155,6 +1315,26 @@ public:
         glBindVertexArray(trailVAO);
         glBindBuffer(GL_ARRAY_BUFFER, trailVBO);
         glBufferData(GL_ARRAY_BUFFER, sizeof(trailVertices), trailVertices, GL_STATIC_DRAW);
+        
+        // 位置属性
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+        glEnableVertexAttribArray(0);
+        
+        glBindBuffer(GL_ARRAY_BUFFER, 0);
+        glBindVertexArray(0);
+        
+        // 创建闪电线条几何体 - 简单线条用于闪电渲染
+        float lightningVertices[] = {
+            0.0f, 0.0f, 0.0f,  // 起点
+            1.0f, 1.0f, 1.0f   // 终点（会在渲染时动态更新）
+        };
+        
+        glGenVertexArrays(1, &lightningVAO);
+        glGenBuffers(1, &lightningVBO);
+        
+        glBindVertexArray(lightningVAO);
+        glBindBuffer(GL_ARRAY_BUFFER, lightningVBO);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(lightningVertices), lightningVertices, GL_DYNAMIC_DRAW); // 使用动态绘制
         
         // 位置属性
         glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
@@ -1709,19 +1889,67 @@ public:
                 cloud.opacity = 0.2f + static_cast<float>(rand()) / RAND_MAX * 0.3f;
             }
         }
+        
+        // Update lightning system
+        if (config.lightningEnabled) {
+            lightningTimer += deltaTime;
+            
+            // Generate new lightning
+            if (lightningTimer >= nextLightningTime) {
+                generateLightning();
+                lightningTimer = 0.0f;
+                // Random interval for next lightning
+                nextLightningTime = config.lightningFrequency + (static_cast<float>(rand()) / RAND_MAX) * config.lightningFrequency;
+            }
+            
+            // Update existing lightning
+            for (auto it = lightnings.begin(); it != lightnings.end();) {
+                if (!it->update(deltaTime)) {
+                    it = lightnings.erase(it);
+                } else {
+                    ++it;
+                }
+            }
+        }
     }
     
     void generateRaindrops() {
-        int raindropsToGenerate = config.rainDensity / 10; // 增加生成数量
+        int raindropsToGenerate = config.rainDensity / 4; // 增加生成数量
         
         for (int i = 0; i < raindropsToGenerate; ++i) {
-            if (rand() % 100 < 40) { // 提高生成概率到40%
+            if (rand() % 100 < 80) { // 大幅提高生成概率到80%
                 Raindrop raindrop;
                 
-                // 随机位置 - 在水面上方的更大区域，使用整个水面
-                float x = -POND_SIZE/2 + static_cast<float>(rand()) / RAND_MAX * POND_SIZE;
-                float z = -POND_SIZE/2 + static_cast<float>(rand()) / RAND_MAX * POND_SIZE;
-                float y = 20.0f + static_cast<float>(rand()) / RAND_MAX * 20.0f;
+                // 改进的位置生成策略 - 创造更好的层次感
+                float cameraDistance = glm::length(cameraPos);
+                float nearRadius = cameraDistance * 0.3f;   // 近距离范围
+                float farRadius = cameraDistance * 1.5f;    // 远距离范围
+                
+                // 随机选择距离层次
+                float layerChoice = static_cast<float>(rand()) / RAND_MAX;
+                float radius, height;
+                
+                if (layerChoice < 0.4f) {
+                    // 40% 概率生成近距离大雨滴
+                    radius = nearRadius;
+                    height = 15.0f + static_cast<float>(rand()) / RAND_MAX * 25.0f;
+                } else if (layerChoice < 0.7f) {
+                    // 30% 概率生成中距离雨滴
+                    radius = (nearRadius + farRadius) * 0.5f;
+                    height = 25.0f + static_cast<float>(rand()) / RAND_MAX * 35.0f;
+                } else {
+                    // 30% 概率生成远距离小雨滴
+                    radius = farRadius;
+                    height = 35.0f + static_cast<float>(rand()) / RAND_MAX * 50.0f;
+                }
+                
+                // 在圆形区域内随机生成位置
+                float angle = static_cast<float>(rand()) / RAND_MAX * 2.0f * glm::pi<float>();
+                float distance = static_cast<float>(rand()) / RAND_MAX * radius;
+                
+                float x = cameraPos.x + distance * cos(angle);
+                float z = cameraPos.z + distance * sin(angle);
+                float y = cameraPos.y + height;
                 
                 // 随机颜色
                 int colorIndex = rand() % config.raindropColors.size();
@@ -1730,6 +1958,28 @@ public:
                 raindrops.push_back(raindrop);
             }
         }
+    }
+    
+    // 新增：生成闪电
+    void generateLightning() {
+        Lightning lightning;
+        
+        // 随机闪电起点（天空中的位置）
+        glm::vec3 startPos(
+            cameraPos.x + (static_cast<float>(rand()) / RAND_MAX - 0.5f) * 400.0f,
+            cameraPos.y + 100.0f + static_cast<float>(rand()) / RAND_MAX * 100.0f,
+            cameraPos.z + (static_cast<float>(rand()) / RAND_MAX - 0.5f) * 400.0f
+        );
+        
+        // 随机闪电终点（地面或水面附近）
+        glm::vec3 endPos(
+            startPos.x + (static_cast<float>(rand()) / RAND_MAX - 0.5f) * 100.0f,
+            WATER_HEIGHT + 5.0f + static_cast<float>(rand()) / RAND_MAX * 20.0f,
+            startPos.z + (static_cast<float>(rand()) / RAND_MAX - 0.5f) * 100.0f
+        );
+        
+        lightning.generate(startPos, endPos);
+        lightnings.push_back(lightning);
     }
     
     void render() {
@@ -1741,13 +1991,14 @@ public:
         glm::mat4 view = glm::lookAt(cameraPos, cameraPos + cameraFront, cameraUp);
         glm::mat4 projection = glm::perspective(glm::radians(45.0f), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 1000.0f);
         
-        // 顺序很重要：先天空、再月亮和星星、然后水面、最后雨滴和波纹
+        // 顺序很重要：先天空、再月亮和星星、然后水面、最后雨滴、波纹和闪电
         renderSky(view, projection);
         renderMoon(view, projection);
         renderStars(view, projection);
         renderWater(view, projection);
         renderRaindrops(view, projection);
         renderRipples(view, projection);
+        renderLightning(view, projection);
         
         // 渲染ImGui界面
         renderUI();
@@ -1781,12 +2032,12 @@ public:
         glBindTexture(GL_TEXTURE_2D, waterReflectionTexture);
         waterShader->setInt("reflectionMap", 2);
         
-        // 设置水面属性 - 进一步增加波浪效果
+        // 设置水面属性 - 优化波浪效果
         waterShader->setFloat("time", totalTime);
         waterShader->setVec3("viewPos", cameraPos);
-        waterShader->setFloat("waveStrength", config.waveStrength * 10.0f); // 进一步增强波浪
-        waterShader->setFloat("waveSpeed", 1.5f); // 加快波浪速度
-        waterShader->setFloat("waterDepth", 0.8f); // 加深水色
+        waterShader->setFloat("waveStrength", config.waveStrength * 3.0f); // 适度增强波浪，避免过于夸张
+        waterShader->setFloat("waveSpeed", 1.8f); // 适当加快波浪速度
+        waterShader->setFloat("waterDepth", 0.9f); // 进一步加深水色
         
         // 使用索引绘制水面
         glBindVertexArray(waterVAO);
@@ -1795,83 +2046,116 @@ public:
     }
     
     void renderRaindrops(const glm::mat4& view, const glm::mat4& projection) {
-        // First render raindrop trails
+        // 首先渲染流星拖尾效果 - 增强视觉效果
         trailShader->use();
         trailShader->setMat4("view", view);
         trailShader->setMat4("projection", projection);
         
-        glBindVertexArray(trailVAO);
+        // 启用线条宽度设置
+        glEnable(GL_LINE_SMOOTH);
+        glHint(GL_LINE_SMOOTH_HINT, GL_NICEST);
+        
+        glBindVertexArray(lightningVAO); // 重用闪电的线条VAO
+        
         for (const auto& raindrop : raindrops) {
-            if (!raindrop.visible || raindrop.state > 0 || raindrop.velocity.y > -2.0f)
+            if (!raindrop.visible || raindrop.state > 0 || raindrop.trailPositions.empty())
                 continue;
                 
-            // Set model matrix - scale and rotate trail based on raindrop velocity direction
-            glm::mat4 model = glm::mat4(1.0f);
-            model = glm::translate(model, raindrop.position);
-            
-            // Determine trail direction based on raindrop velocity
-            glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f);
-            glm::vec3 direction = glm::normalize(-raindrop.velocity);
-            float angleY = atan2(direction.x, direction.z);
-            float angleX = acos(glm::dot(direction, up));
-            
-            model = glm::rotate(model, angleY, glm::vec3(0.0f, 1.0f, 0.0f));
-            model = glm::rotate(model, angleX, glm::vec3(1.0f, 0.0f, 0.0f));
-            
-            // Scale trail based on velocity and size
-            float trailLength = glm::length(raindrop.velocity) * raindrop.trail * 0.5f;
-            model = glm::scale(model, glm::vec3(raindrop.size * 0.4f, trailLength, raindrop.size * 0.4f));
-            
-            trailShader->setMat4("model", model);
-            
-            // Set trail color - slightly transparent
-            glm::vec3 trailColor = raindrop.color * 0.9f;
-            float trailOpacity = 0.3f * raindrop.brightness;
-            trailShader->setVec3("rippleColor", trailColor);
-            trailShader->setFloat("opacity", trailOpacity);
-            
-            // Draw trail
-            glDrawArrays(GL_TRIANGLES, 0, 3);
+            // 渲染每条雨滴的拖尾
+            for (int i = 0; i < raindrop.trailPositions.size() - 1; i++) {
+                // 计算拖尾衰减
+                float trailFactor = 1.0f - (float(i) / raindrop.maxTrailLength);
+                float alpha = raindrop.trailAlphas[i] * trailFactor * 0.8f;
+                
+                if (alpha < 0.05f) continue; // 跳过过于透明的部分
+                
+                // 更新线条顶点数据
+                std::vector<float> lineVertices = {
+                    raindrop.trailPositions[i].x, raindrop.trailPositions[i].y, raindrop.trailPositions[i].z,
+                    raindrop.trailPositions[i+1].x, raindrop.trailPositions[i+1].y, raindrop.trailPositions[i+1].z
+                };
+                
+                glBindBuffer(GL_ARRAY_BUFFER, lightningVBO);
+                glBufferSubData(GL_ARRAY_BUFFER, 0, lineVertices.size() * sizeof(float), lineVertices.data());
+                
+                // 设置模型矩阵
+                glm::mat4 model = glm::mat4(1.0f);
+                trailShader->setMat4("model", model);
+                
+                // 设置拖尾颜色和透明度 - 增强流星效果
+                glm::vec3 trailColor = raindrop.color * (1.2f + 0.3f * sin(totalTime * 5.0f));
+                trailShader->setVec3("rippleColor", trailColor);
+                trailShader->setFloat("opacity", alpha);
+                
+                // 动态线条宽度
+                float lineWidth = raindrop.size * (2.0f - raindrop.layerDepth) * trailFactor * 2.0f;
+                glLineWidth(std::max(lineWidth, 1.0f));
+                
+                // 绘制拖尾线段
+                glDrawArrays(GL_LINES, 0, 2);
+            }
         }
         
-        // Then render raindrop points
-        raindropShader->use();
+        glDisable(GL_LINE_SMOOTH);
         
-        // Set transformation matrices
+        // 然后渲染雨滴主体 - 改进的点渲染
+        raindropShader->use();
         raindropShader->setMat4("view", view);
         raindropShader->setMat4("projection", projection);
         
-        // Enable point size
         glEnable(GL_PROGRAM_POINT_SIZE);
+        glEnable(GL_POINT_SMOOTH); // 启用点的抗锯齿
+        glHint(GL_POINT_SMOOTH_HINT, GL_NICEST);
         
-        // Loop through all raindrops
         glBindVertexArray(raindropVAO);
+        
+        // 按距离排序雨滴以实现正确的透明度混合
+        std::vector<std::pair<float, const Raindrop*>> sortedRaindrops;
         for (const auto& raindrop : raindrops) {
-            if (!raindrop.visible || raindrop.state > 0)
-                continue;
-                
-            // Set model matrix
+            if (raindrop.visible && raindrop.state == 0) {
+                float distance = glm::length(raindrop.position - cameraPos);
+                sortedRaindrops.push_back({distance, &raindrop});
+            }
+        }
+        
+        // 从远到近排序
+        std::sort(sortedRaindrops.begin(), sortedRaindrops.end(), 
+                  [](const auto& a, const auto& b) { return a.first > b.first; });
+        
+        for (const auto& [distance, raindrop] : sortedRaindrops) {
+            // 设置模型矩阵
             glm::mat4 model = glm::mat4(1.0f);
-            model = glm::translate(model, raindrop.position);
+            model = glm::translate(model, raindrop->position);
             raindropShader->setMat4("model", model);
             
-            // Set raindrop properties - size varies with distance
-            float distanceFactor = glm::length(raindrop.position - cameraPos);
-            float sizeScale = std::max(0.5f, 30.0f / distanceFactor);
+            // 基于距离的动态大小调整 - 显著改善层次感
+            float baseSizeScale = 100.0f / std::max(distance, 10.0f); // 防止除零
+            float finalSize = raindrop->size * baseSizeScale;
             
-            raindropShader->setVec3("raindropColor", raindrop.color * raindrop.brightness);
-            raindropShader->setFloat("raindropSize", raindrop.size * 15.0f * sizeScale); // Magnify point size
+            // 近处雨滴明显更大，远处雨滴相对较小
+            if (raindrop->layerDepth < 0.3f) {
+                finalSize *= 3.0f; // 近处雨滴3倍大小
+            } else if (raindrop->layerDepth < 0.6f) {
+                finalSize *= 2.0f; // 中等距离2倍大小
+            }
             
-            // Add twinkle effect
-            float twinkle = 0.7f + 0.3f * sin(totalTime * raindrop.twinkleSpeed);
-            raindropShader->setFloat("brightness", raindrop.brightness * twinkle);
+            // 设置雨滴属性
+            glm::vec3 enhancedColor = raindrop->color * raindrop->brightness;
+            // 添加荧光效果
+            float glowEffect = 1.0f + 0.4f * sin(totalTime * raindrop->twinkleSpeed + raindrop->position.x);
+            enhancedColor *= glowEffect;
             
-            // Draw raindrop
+            raindropShader->setVec3("raindropColor", enhancedColor);
+            raindropShader->setFloat("raindropSize", finalSize);
+            raindropShader->setFloat("brightness", raindrop->brightness);
+            
+            // 绘制雨滴
             glDrawArrays(GL_POINTS, 0, 1);
         }
-        glBindVertexArray(0);
         
+        glDisable(GL_POINT_SMOOTH);
         glDisable(GL_PROGRAM_POINT_SIZE);
+        glBindVertexArray(0);
     }
     
     void renderRipples(const glm::mat4& view, const glm::mat4& projection) {
@@ -1881,35 +2165,58 @@ public:
         rippleShader->setMat4("view", view);
         rippleShader->setMat4("projection", projection);
         
-        // 增加波纹渲染的透明度混合
+        // 增强的透明度混合设置
         glEnable(GL_BLEND);
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE); // 改为加法混合以增强可见性
         
-        // 遍历所有水波
+        // 启用线条抗锯齿
+        glEnable(GL_LINE_SMOOTH);
+        glHint(GL_LINE_SMOOTH_HINT, GL_NICEST);
+        
+        // 遍历所有水波 - 改进的涟漪渲染
         glBindVertexArray(rippleVAO);
         for (const auto& ripple : ripples) {
-            // 设置模型矩阵
-            glm::mat4 model = glm::mat4(1.0f);
-            model = glm::translate(model, ripple.position);
-            
-            // 轻微旋转水波
-            model = glm::rotate(model, totalTime * 0.1f, glm::vec3(0.0f, 1.0f, 0.0f));
-            
-            // 使用更大的缩放
-            model = glm::scale(model, glm::vec3(ripple.radius));
-            
-            rippleShader->setMat4("model", model);
-            
-            // 增加颜色亮度和透明度
-            float colorPulse = 1.0f + 0.2f * sin(totalTime * ripple.pulseFrequency);
-            glm::vec3 pulsingColor = ripple.color * colorPulse * 1.5f; // 增加亮度
-            
-            rippleShader->setVec3("rippleColor", pulsingColor);
-            rippleShader->setFloat("opacity", ripple.opacity * 1.2f); // 增加透明度
-            
-            // 绘制水波
-            glDrawArrays(GL_TRIANGLES, 0, 6 * 128 * config.rippleRings);
+            // 多层涟漪渲染以增强效果
+            for (int layer = 0; layer < 3; layer++) {
+                glm::mat4 model = glm::mat4(1.0f);
+                
+                // 添加水面波浪高度偏移
+                glm::vec3 ripplePos = ripple.position;
+                ripplePos.y += ripple.getCurrentWaveHeight() * sin(totalTime * 2.0f + layer);
+                model = glm::translate(model, ripplePos);
+                
+                // 每层略微不同的旋转和大小
+                float layerRotation = totalTime * (0.1f + layer * 0.05f);
+                model = glm::rotate(model, layerRotation, glm::vec3(0.0f, 1.0f, 0.0f));
+                
+                float layerScale = ripple.radius * (1.0f + layer * 0.1f);
+                model = glm::scale(model, glm::vec3(layerScale));
+                
+                rippleShader->setMat4("model", model);
+                
+                // 多层颜色效果
+                float layerIntensity = 1.0f - (layer * 0.3f);
+                float colorPulse = 1.0f + 0.3f * sin(totalTime * ripple.pulseFrequency + layer);
+                glm::vec3 layerColor = ripple.color * colorPulse * layerIntensity * config.rippleVisibility;
+                
+                // 增强涟漪亮度和对比度
+                layerColor = glm::min(layerColor * 2.0f, glm::vec3(1.0f));
+                
+                rippleShader->setVec3("rippleColor", layerColor);
+                
+                // 动态透明度 - 更强的初始透明度
+                float layerOpacity = ripple.opacity * layerIntensity * 0.8f;
+                rippleShader->setFloat("opacity", layerOpacity);
+                
+                // 绘制水波环
+                glDrawArrays(GL_TRIANGLES, 0, 6 * 256 * config.rippleRings);
+            }
         }
+        
+        glDisable(GL_LINE_SMOOTH);
+        
+        // 恢复标准透明度混合
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
         glBindVertexArray(0);
     }
     
@@ -1932,17 +2239,8 @@ public:
         skyShader->setMat4("view", skyView); // 使用特殊的天空视图矩阵
         skyShader->setMat4("projection", projection);
         
-        // 设置天空属性
-        skyShader->setFloat("time", totalTime * 0.01f);
-        skyShader->setVec3("viewPos", glm::vec3(0.0f)); // 天空中心位置
-        
-        // 为天空着色器设置特殊的Uniform以区别于水面着色器
-        skyShader->setBool("isSky", true);
-        
-        // 设置纹理
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, skyTexture);
-        skyShader->setInt("skyTexture", 0);
+        // 设置天空属性 - 不再依赖纹理
+        skyShader->setFloat("time", totalTime * 0.5f); // 加快时间变化以增加动态效果
         
         // 绘制天空
         glBindVertexArray(skyVAO);
@@ -2028,6 +2326,88 @@ public:
         glDisable(GL_PROGRAM_POINT_SIZE);
     }
     
+    // 新增：渲染闪电效果
+    void renderLightning(const glm::mat4& view, const glm::mat4& projection) {
+        if (lightnings.empty()) return;
+        
+        lightningShader->use();
+        lightningShader->setMat4("view", view);
+        lightningShader->setMat4("projection", projection);
+        
+        // 启用线条渲染设置
+        glEnable(GL_LINE_SMOOTH);
+        glHint(GL_LINE_SMOOTH_HINT, GL_NICEST);
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE); // 加法混合用于闪电发光效果
+        
+        glBindVertexArray(lightningVAO);
+        
+        for (const auto& lightning : lightnings) {
+            if (!lightning.active || lightning.segments.size() < 2) continue;
+            
+            // 渲染主闪电路径
+            for (int i = 0; i < lightning.segments.size() - 1; i++) {
+                // 更新线条顶点数据
+                std::vector<float> lineVertices = {
+                    lightning.segments[i].x, lightning.segments[i].y, lightning.segments[i].z,
+                    lightning.segments[i+1].x, lightning.segments[i+1].y, lightning.segments[i+1].z
+                };
+                
+                glBindBuffer(GL_ARRAY_BUFFER, lightningVBO);
+                glBufferSubData(GL_ARRAY_BUFFER, 0, lineVertices.size() * sizeof(float), lineVertices.data());
+                
+                // 设置模型矩阵
+                glm::mat4 model = glm::mat4(1.0f);
+                lightningShader->setMat4("model", model);
+                
+                // 闪电颜色和强度
+                glm::vec3 lightningColor = lightning.color * lightning.intensity * config.lightningIntensity;
+                lightningShader->setVec3("lightningColor", lightningColor);
+                lightningShader->setFloat("intensity", lightning.intensity);
+                
+                // 动态线条宽度
+                float lineWidth = lightning.thickness * lightning.intensity;
+                glLineWidth(std::max(lineWidth, 1.0f));
+                
+                // 绘制闪电段
+                glDrawArrays(GL_LINES, 0, 2);
+            }
+            
+            // 渲染闪电光晕效果 - 多层渲染
+            for (int glow = 1; glow <= 3; glow++) {
+                for (int i = 0; i < lightning.segments.size() - 1; i++) {
+                    std::vector<float> lineVertices = {
+                        lightning.segments[i].x, lightning.segments[i].y, lightning.segments[i].z,
+                        lightning.segments[i+1].x, lightning.segments[i+1].y, lightning.segments[i+1].z
+                    };
+                    
+                    glBindBuffer(GL_ARRAY_BUFFER, lightningVBO);
+                    glBufferSubData(GL_ARRAY_BUFFER, 0, lineVertices.size() * sizeof(float), lineVertices.data());
+                    
+                    glm::mat4 model = glm::mat4(1.0f);
+                    lightningShader->setMat4("model", model);
+                    
+                    // 光晕颜色 - 逐层衰减
+                    float glowIntensity = lightning.intensity * (0.5f / glow);
+                    glm::vec3 glowColor = lightning.color * glowIntensity * 0.3f;
+                    lightningShader->setVec3("lightningColor", glowColor);
+                    lightningShader->setFloat("intensity", glowIntensity);
+                    
+                    // 光晕线条宽度
+                    float glowWidth = lightning.thickness * (1.0f + glow * 2.0f) * lightning.intensity;
+                    glLineWidth(std::max(glowWidth, 1.0f));
+                    
+                    glDrawArrays(GL_LINES, 0, 2);
+                }
+            }
+        }
+        
+        // 恢复渲染状态
+        glDisable(GL_LINE_SMOOTH);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        glBindVertexArray(0);
+    }
+    
     void renderUI() {
         // Start ImGui frame
         ImGui_ImplOpenGL3_NewFrame();
@@ -2052,9 +2432,9 @@ public:
         
         // Rain settings
         if (ImGui::CollapsingHeader("Rain Settings")) {
-            ImGui::SliderInt("Rain Density", &config.rainDensity, 10, 500);
-            ImGui::SliderFloat("Min Raindrop Size", &config.minRaindropSize, 0.05f, 0.3f);
-            ImGui::SliderFloat("Max Raindrop Size", &config.maxRaindropSize, 0.1f, 0.5f);
+            ImGui::SliderInt("Rain Density", &config.rainDensity, 50, 800); // 提高密度范围
+            ImGui::SliderFloat("Min Raindrop Size", &config.minRaindropSize, 0.3f, 1.5f); // 调整雨滴大小范围
+            ImGui::SliderFloat("Max Raindrop Size", &config.maxRaindropSize, 1.0f, 4.0f); // 大幅提高最大大小
             ImGui::SliderFloat("Min Raindrop Speed", &config.minRaindropSpeed, 1.0f, 5.0f);
             ImGui::SliderFloat("Max Raindrop Speed", &config.maxRaindropSpeed, 3.0f, 10.0f);
             
@@ -2078,9 +2458,10 @@ public:
         
         // Water settings
         if (ImGui::CollapsingHeader("Water Settings")) {
-            ImGui::SliderFloat("Wave Strength", &config.waveStrength, 0.0f, 1.0f);
-            ImGui::SliderFloat("Max Ripple Size", &config.maxRippleSize, 5.0f, 30.0f);
-            ImGui::SliderInt("Ripple Rings", &config.rippleRings, 1, 5);
+            ImGui::SliderFloat("Wave Strength", &config.waveStrength, 0.0f, 3.0f); // 增加波浪强度范围
+            ImGui::SliderFloat("Max Ripple Size", &config.maxRippleSize, 20.0f, 150.0f); // 大幅增加涟漪大小范围
+            ImGui::SliderFloat("Ripple Visibility", &config.rippleVisibility, 0.5f, 5.0f); // 新增涟漪可见度控制
+            ImGui::SliderInt("Ripple Rings", &config.rippleRings, 2, 8); // 增加涟漪环数范围
             ImGui::SliderFloat("Update Interval", &config.updateInterval, 0.01f, 0.1f);
             
             // Ripple color editing
@@ -2099,6 +2480,15 @@ public:
                 }
                 ImGui::TreePop();
             }
+        }
+        
+        // Lightning settings - 新增闪电设置
+        if (ImGui::CollapsingHeader("Lightning Settings")) {
+            ImGui::Checkbox("Enable Lightning", &config.lightningEnabled);
+            ImGui::SliderFloat("Lightning Frequency (s)", &config.lightningFrequency, 2.0f, 20.0f);
+            ImGui::SliderFloat("Lightning Intensity", &config.lightningIntensity, 0.1f, 3.0f);
+            
+            ImGui::Text("Active Lightning: %lu", lightnings.size());
         }
         
         // Camera settings
@@ -2139,23 +2529,34 @@ public:
     }
 };
 
-// Raindrop::update method - uses RainSimulation's playRaindropSound method
+// Raindrop::update method - enhanced with trail effects
 bool Raindrop::update(float deltaTime) {
     lifetime += deltaTime;
     
-    // Random twinkling, using brightness rather than visibility
+    // Update distance from camera for layer depth calculation
+    if (simulation) {
+        distanceFromCamera = glm::length(position - simulation->cameraPos);
+        layerDepth = std::min(distanceFromCamera / 200.0f, 1.0f);
+    }
+    
+    // Enhanced twinkling with layer-based variations
     brightness = 0.7f + 0.3f * sin(lifetime * twinkleSpeed + position.x * 0.1f);
+    brightness *= (1.2f - layerDepth * 0.4f); // 近处雨滴更亮
     
     if (state == 0) { // Falling state
+        // Update trail positions before updating main position
+        updateTrail(deltaTime);
+        
         position += velocity * deltaTime;
         
-        // Add some random motion - raindrop slight swaying
-        float swayAmount = 0.05f;
+        // Enhanced motion with layer-dependent swaying
+        float swayAmount = 0.1f * (1.0f - layerDepth); // 近处雨滴摆动更明显
         velocity.x += (cos(lifetime * 3.0f + position.z) * swayAmount - velocity.x * 0.1f) * deltaTime;
         velocity.z += (sin(lifetime * 2.5f + position.x) * swayAmount - velocity.z * 0.1f) * deltaTime;
         
-        // Velocity increases slightly over time - simulating gravity
-        velocity.y -= 0.2f * deltaTime;
+        // Gravity with layer-dependent acceleration
+        float gravityMultiplier = 0.8f + layerDepth * 0.4f; // 远处雨滴受重力影响更大
+        velocity.y -= 2.0f * gravityMultiplier * deltaTime;
         
         // Check if hit water surface
         if (position.y <= WATER_HEIGHT) {
@@ -2171,7 +2572,7 @@ bool Raindrop::update(float deltaTime) {
         }
     } else if (state == 1) { // Water entry state
         // If below water surface, gradually fade
-        brightness -= deltaTime * 2.0f;
+        brightness -= deltaTime * 3.0f;
         if (brightness <= 0.0f) {
             state = 2; // Disappeared state
         }
@@ -2212,21 +2613,52 @@ out vec4 FragColor;
 
 in vec2 TexCoords;
 
-uniform sampler2D skyTexture;
 uniform float time;
 
 void main() {
-    // 采样天空纹理
-    vec4 skyColor = texture(skyTexture, TexCoords);
+    // 基于纹理坐标创建夜空渐变
+    float height = TexCoords.y;
     
-    // 添加一些闪烁的星星
-    float stars = 0.0;
-    if (fract(sin(TexCoords.x * 100.0) * sin(TexCoords.y * 100.0) * 43758.5453) > 0.997) {
-        stars = 0.5 + 0.5 * sin(time * 2.0 + TexCoords.x * 10.0);
+    // 夜空渐变：从地平线的深蓝到天顶的黑色
+    vec3 horizonColor = vec3(0.15, 0.25, 0.45);  // 地平线深蓝色
+    vec3 zenithColor = vec3(0.02, 0.02, 0.08); // 天顶接近黑色
+    
+    // 基于高度插值，使用平滑步进函数
+    float gradientFactor = smoothstep(0.0, 1.0, height);
+    gradientFactor = pow(gradientFactor, 0.8); // 调整渐变曲线
+    vec3 skyColor = mix(horizonColor, zenithColor, gradientFactor);
+    
+    // 添加更自然的星星分布
+    float starField = 0.0;
+    vec2 starCoord = TexCoords * 80.0; // 调整星星密度
+    
+    // 使用多层噪声创建更自然的星星分布
+    float star1 = fract(sin(dot(floor(starCoord), vec2(12.9898, 78.233))) * 43758.5453);
+    float star2 = fract(sin(dot(floor(starCoord * 1.3), vec2(93.9898, 67.345))) * 28458.5453);
+    
+    // 只在天空上半部分显示星星，并且有随机分布
+    if (star1 > 0.996 && height > 0.4) {
+        float twinkle = 0.6 + 0.4 * sin(time * 2.0 + star1 * 50.0);
+        starField += twinkle * 0.8 * (0.5 + 0.5 * star2);
     }
     
-    // 最终颜色是天空纹理与闪烁星星的混合
-    vec3 finalColor = skyColor.rgb + stars * vec3(0.8, 0.8, 1.0);
+    // 添加一些较小的星星
+    if (star2 > 0.998 && height > 0.3) {
+        float twinkle = 0.4 + 0.3 * sin(time * 3.0 + star2 * 80.0);
+        starField += twinkle * 0.4;
+    }
+    
+    // 添加月光晕染效果
+    vec2 moonPos = vec2(0.75, 0.85);
+    float moonDist = distance(TexCoords, moonPos);
+    vec3 moonGlow = vec3(0.6, 0.6, 0.4) * smoothstep(0.25, 0.0, moonDist) * 0.4;
+    
+    // 添加微妙的云层效果
+    float cloudPattern = sin(TexCoords.x * 15.0 + time * 0.1) * sin(TexCoords.y * 8.0 + time * 0.05);
+    vec3 cloudColor = vec3(0.05, 0.05, 0.1) * smoothstep(0.3, 0.8, cloudPattern) * 0.3;
+    
+    // 最终颜色组合
+    vec3 finalColor = skyColor + starField * vec3(0.9, 0.9, 1.0) + moonGlow + cloudColor;
     
     FragColor = vec4(finalColor, 1.0);
 }
@@ -2252,31 +2684,51 @@ uniform float waveSpeed;
 void main() {
     FragPos = vec3(model * vec4(aPos, 1.0));
     
-    // Multi-layer wave effect
+    // 多层复杂波浪效果 - 增加更多层次
     vec3 pos = aPos;
-    float wave1 = sin(pos.x * 0.1 + time * waveSpeed) * cos(pos.z * 0.1 + time * waveSpeed * 0.8) * waveStrength;
-    float wave2 = sin(pos.x * 0.2 + time * waveSpeed * 1.2) * cos(pos.z * 0.15 + time * waveSpeed) * waveStrength * 0.5;
-    float wave3 = sin(pos.x * 0.05 + time * waveSpeed * 0.7) * cos(pos.z * 0.06 + time * waveSpeed * 0.9) * waveStrength * 0.3;
     
-    pos.y = wave1 + wave2 + wave3;
+    // 第一层：大波浪
+    float wave1 = sin(pos.x * 0.08 + time * waveSpeed) * cos(pos.z * 0.08 + time * waveSpeed * 0.8) * waveStrength;
+    
+    // 第二层：中等波浪
+    float wave2 = sin(pos.x * 0.15 + time * waveSpeed * 1.3) * cos(pos.z * 0.12 + time * waveSpeed * 1.1) * waveStrength * 0.6;
+    
+    // 第三层：小波浪
+    float wave3 = sin(pos.x * 0.25 + time * waveSpeed * 1.8) * cos(pos.z * 0.22 + time * waveSpeed * 1.5) * waveStrength * 0.3;
+    
+    // 第四层：微波
+    float wave4 = sin(pos.x * 0.4 + time * waveSpeed * 2.2) * cos(pos.z * 0.35 + time * waveSpeed * 2.0) * waveStrength * 0.15;
+    
+    // 第五层：细微波纹
+    float wave5 = sin(pos.x * 0.6 + time * waveSpeed * 2.8) * cos(pos.z * 0.55 + time * waveSpeed * 2.5) * waveStrength * 0.08;
+    
+    pos.y = wave1 + wave2 + wave3 + wave4 + wave5;
     
     gl_Position = projection * view * model * vec4(pos, 1.0);
     TexCoords = aTexCoords;
     
-    // Wave surface normal calculation (based on wave derivatives)
-    float dx1 = 0.1 * cos(pos.x * 0.1 + time * waveSpeed) * cos(pos.z * 0.1 + time * waveSpeed * 0.8) * waveStrength;
-    float dz1 = 0.1 * sin(pos.x * 0.1 + time * waveSpeed) * -sin(pos.z * 0.1 + time * waveSpeed * 0.8) * waveStrength;
+    // 计算更精确的法线 - 基于所有波浪层的导数
+    // X方向导数
+    float dx1 = 0.08 * cos(pos.x * 0.08 + time * waveSpeed) * cos(pos.z * 0.08 + time * waveSpeed * 0.8) * waveStrength;
+    float dx2 = 0.15 * cos(pos.x * 0.15 + time * waveSpeed * 1.3) * cos(pos.z * 0.12 + time * waveSpeed * 1.1) * waveStrength * 0.6;
+    float dx3 = 0.25 * cos(pos.x * 0.25 + time * waveSpeed * 1.8) * cos(pos.z * 0.22 + time * waveSpeed * 1.5) * waveStrength * 0.3;
+    float dx4 = 0.4 * cos(pos.x * 0.4 + time * waveSpeed * 2.2) * cos(pos.z * 0.35 + time * waveSpeed * 2.0) * waveStrength * 0.15;
+    float dx5 = 0.6 * cos(pos.x * 0.6 + time * waveSpeed * 2.8) * cos(pos.z * 0.55 + time * waveSpeed * 2.5) * waveStrength * 0.08;
     
-    float dx2 = 0.2 * cos(pos.x * 0.2 + time * waveSpeed * 1.2) * cos(pos.z * 0.15 + time * waveSpeed) * waveStrength * 0.5;
-    float dz2 = 0.15 * sin(pos.x * 0.2 + time * waveSpeed * 1.2) * -sin(pos.z * 0.15 + time * waveSpeed) * waveStrength * 0.5;
+    // Z方向导数
+    float dz1 = 0.08 * sin(pos.x * 0.08 + time * waveSpeed) * -sin(pos.z * 0.08 + time * waveSpeed * 0.8) * waveStrength;
+    float dz2 = 0.12 * sin(pos.x * 0.15 + time * waveSpeed * 1.3) * -sin(pos.z * 0.12 + time * waveSpeed * 1.1) * waveStrength * 0.6;
+    float dz3 = 0.22 * sin(pos.x * 0.25 + time * waveSpeed * 1.8) * -sin(pos.z * 0.22 + time * waveSpeed * 1.5) * waveStrength * 0.3;
+    float dz4 = 0.35 * sin(pos.x * 0.4 + time * waveSpeed * 2.2) * -sin(pos.z * 0.35 + time * waveSpeed * 2.0) * waveStrength * 0.15;
+    float dz5 = 0.55 * sin(pos.x * 0.6 + time * waveSpeed * 2.8) * -sin(pos.z * 0.55 + time * waveSpeed * 2.5) * waveStrength * 0.08;
     
-    vec3 tangent = normalize(vec3(1.0, dx1 + dx2, 0.0));
-    vec3 bitangent = normalize(vec3(0.0, dz1 + dz2, 1.0));
+    vec3 tangent = normalize(vec3(1.0, dx1 + dx2 + dx3 + dx4 + dx5, 0.0));
+    vec3 bitangent = normalize(vec3(0.0, dz1 + dz2 + dz3 + dz4 + dz5, 1.0));
     Normal = normalize(cross(tangent, bitangent));
 }
 )";
 
-    // Fragment shader - water (enhanced)
+    // Fragment shader - water (enhanced with better ripple integration)
     const char* waterFragmentShader = R"(
 #version 330 core
 out vec4 FragColor;
@@ -2294,91 +2746,99 @@ uniform float waterDepth;
 uniform float waveStrength;
 
 void main() {
-    // Generate distorted texture coordinates
+    // Enhanced distorted texture coordinates for better wave effects
     vec2 distortedTexCoords = vec2(
-        TexCoords.x + sin(TexCoords.y * 10.0 + time) * 0.01,
-        TexCoords.y + sin(TexCoords.x * 10.0 + time * 0.8) * 0.01
+        TexCoords.x + sin(TexCoords.y * 15.0 + time * 1.2) * 0.015,
+        TexCoords.y + sin(TexCoords.x * 12.0 + time * 0.8) * 0.012
     );
     
-    // Generate dynamic normal without normal map
+    // Generate enhanced dynamic normal
     vec3 normal = normalize(Normal);
     
-    // Dynamic changing normal to simulate small water ripples
-    normal.x += sin(TexCoords.x * 30.0 + time * 3.0) * sin(TexCoords.y * 20.0 + time * 2.0) * 0.03;
-    normal.z += cos(TexCoords.x * 25.0 + time * 2.5) * cos(TexCoords.y * 35.0 + time * 3.5) * 0.03;
+    // Multi-layer normal disturbance for more realistic water surface
+    normal.x += sin(TexCoords.x * 40.0 + time * 4.0) * sin(TexCoords.y * 30.0 + time * 3.0) * 0.04;
+    normal.z += cos(TexCoords.x * 35.0 + time * 3.5) * cos(TexCoords.y * 45.0 + time * 4.5) * 0.04;
+    
+    // Add fine detail ripples
+    normal.x += sin(TexCoords.x * 80.0 + time * 8.0) * sin(TexCoords.y * 70.0 + time * 7.0) * 0.01;
+    normal.z += cos(TexCoords.x * 75.0 + time * 7.5) * cos(TexCoords.y * 85.0 + time * 8.5) * 0.01;
+    
     normal = normalize(normal);
     
-    // Ambient light
-    vec3 ambient = vec3(0.05, 0.1, 0.2);
+    // Enhanced ambient lighting
+    vec3 ambient = vec3(0.08, 0.12, 0.25);
     
-    // Diffuse - use multiple light sources
     vec3 result = ambient;
     
-    // Main light source - moonlight
+    // Main moonlight source with enhanced intensity
     {
-        vec3 lightDir = normalize(vec3(0.3, 1.0, 0.1));
+        vec3 lightDir = normalize(vec3(0.4, 1.0, 0.2));
         float diff = max(dot(normal, lightDir), 0.0);
-        vec3 diffuse = diff * vec3(0.6, 0.7, 0.9) * 0.3; // Soft blue-white moonlight
+        vec3 diffuse = diff * vec3(0.7, 0.8, 1.0) * 0.4;
         
-        // Reflection
+        // Enhanced specular reflection
         vec3 viewDir = normalize(viewPos - FragPos);
         vec3 reflectDir = reflect(-lightDir, normal);
-        float spec = pow(max(dot(viewDir, reflectDir), 0.0), 32.0);
-        vec3 specular = spec * vec3(0.8, 0.9, 1.0) * 0.5;
+        float spec = pow(max(dot(viewDir, reflectDir), 0.0), 64.0);
+        vec3 specular = spec * vec3(1.0, 1.0, 1.0) * 0.8;
         
         result += diffuse + specular;
     }
     
-    // Second light source - ambient
+    // Secondary light sources for more complex lighting
     {
-        vec3 lightDir = normalize(vec3(-0.5, 0.5, 0.2));
+        vec3 lightDir = normalize(vec3(-0.6, 0.8, 0.3));
         float diff = max(dot(normal, lightDir), 0.0);
-        vec3 diffuse = diff * vec3(0.1, 0.2, 0.4) * 0.1; // Slight blue ambient light
-        
+        vec3 diffuse = diff * vec3(0.2, 0.3, 0.5) * 0.2;
         result += diffuse;
     }
     
-    // Water color - blend deep and shallow tones
-    vec3 waterColorDeep = vec3(0.0, 0.05, 0.15); // Deep water
-    vec3 waterColorShallow = vec3(0.1, 0.3, 0.6); // Shallow water
+    // Enhanced water color system
+    vec3 waterColorDeep = vec3(0.02, 0.08, 0.18); // Deeper blue
+    vec3 waterColorShallow = vec3(0.15, 0.4, 0.7); // Brighter shallow water
     
-    // More vertical view angle shows more of the bottom
-    float fresnelFactor = pow(1.0 - max(dot(normal, normalize(viewPos - FragPos)), 0.0), 3.0);
+    // More sophisticated fresnel calculation
+    vec3 viewDir = normalize(viewPos - FragPos);
+    float fresnelFactor = pow(1.0 - max(dot(normal, viewDir), 0.0), 2.5);
     
-    // Dynamically blend deep/shallow water colors based on view and waves
+    // Dynamic water color blending
     vec3 waterColor = mix(waterColorDeep, waterColorShallow, 
-                          fresnelFactor * 0.5 + 0.2 * sin(time * 0.1) + 0.3);
+                          fresnelFactor * 0.6 + 0.3 * sin(time * 0.2) + 0.2);
     
-    // Reflection effect - generate simulated reflection without reflection texture
-    vec3 reflection = vec3(0.0);
+    // Enhanced reflection system
+    float skyFresnel = pow(1.0 - max(dot(normal, viewDir), 0.0), 1.8);
+    vec3 skyColor = vec3(0.02, 0.05, 0.12);
     
-    // Generate simulated night sky reflection
-    float skyFresnel = pow(1.0 - max(dot(normal, normalize(viewPos - FragPos)), 0.0), 2.0);
-    vec3 skyColor = vec3(0.0, 0.02, 0.1); // Deep blue night sky
-    
-    // Add simulated moonlight reflection and stars
-    vec2 moonPos = vec2(0.7, 0.8); // Moon position in reflection
+    // Enhanced moonlight reflection
+    vec2 moonPos = vec2(0.75, 0.82);
     float moonDist = distance(distortedTexCoords, moonPos);
-    vec3 moonColor = vec3(0.8, 0.8, 0.6) * smoothstep(0.15, 0.0, moonDist) * 0.8;
+    vec3 moonColor = vec3(0.9, 0.9, 0.7) * smoothstep(0.2, 0.0, moonDist) * 1.2;
     
-    // Random stars
+    // Enhanced star reflections
     float stars = 0.0;
-    if (fract(sin(distortedTexCoords.x * 100.0) * sin(distortedTexCoords.y * 100.0) * 43758.5453) > 0.996) {
-        stars = 0.5 + 0.5 * sin(time * 2.0 + distortedTexCoords.x * 10.0);
+    float starNoise = fract(sin(distortedTexCoords.x * 150.0) * sin(distortedTexCoords.y * 150.0) * 43758.5453);
+    if (starNoise > 0.995) {
+        stars = 0.6 + 0.4 * sin(time * 3.0 + distortedTexCoords.x * 15.0);
     }
     
-    reflection = skyColor + moonColor + stars * vec3(0.8, 0.8, 1.0);
+    vec3 reflection = skyColor + moonColor + stars * vec3(0.9, 0.9, 1.0);
     
-    // Final blend of all components
-    result = mix(result, reflection, skyFresnel * 0.5);
-    result = mix(waterColor, result, 0.5);
+    // More sophisticated blending
+    result = mix(result, reflection, skyFresnel * 0.6);
+    result = mix(waterColor, result, 0.7);
     
-    // Add ripple edge highlight
-    float edgeHighlight = pow(1.0 - abs(dot(normal, vec3(0.0, 1.0, 0.0))), 8.0) * 0.5;
-    result += vec3(edgeHighlight);
+    // Enhanced edge highlighting for wave crests
+    float edgeHighlight = pow(1.0 - abs(dot(normal, vec3(0.0, 1.0, 0.0))), 12.0) * 0.8;
+    result += vec3(edgeHighlight * 0.5, edgeHighlight * 0.7, edgeHighlight);
     
-    // Semi-transparent water effect
-    float alpha = 0.8 + edgeHighlight * 0.2;
+    // Add foam effect on wave peaks
+    float waveHeight = sin(TexCoords.x * 20.0 + time * 2.0) + cos(TexCoords.y * 18.0 + time * 1.8);
+    if (waveHeight > 1.5) {
+        result += vec3(0.3, 0.4, 0.5) * (waveHeight - 1.5) * 0.5;
+    }
+    
+    // Dynamic transparency
+    float alpha = 0.85 + edgeHighlight * 0.15;
     
     FragColor = vec4(result, alpha);
 }
@@ -2407,7 +2867,7 @@ void main() {
 }
 )";
 
-    // Fragment shader - raindrop (enhanced)
+    // Fragment shader - raindrop (enhanced with better glow effects)
     const char* raindropFragmentShader = R"(
 #version 330 core
 out vec4 FragColor;
@@ -2416,31 +2876,37 @@ in vec3 Color;
 in float Brightness;
 
 void main() {
-    // Create circular point
+    // Create circular point with improved gradient
     vec2 circCoord = 2.0 * gl_PointCoord - 1.0;
     float dist = length(circCoord);
     
-    // Smooth circular edge
-    float alpha = 1.0 - smoothstep(0.8, 1.0, dist);
-    
-    // Fade edge and brighten center
+    // Discard pixels outside circle
     if (dist > 1.0) {
         discard;
     }
     
-    // Create raindrop glow effect
-    float innerGlow = 1.0 - dist * dist;
-    float outerGlow = 0.5 * (1.0 - smoothstep(0.5, 1.0, dist));
+    // Multi-layer glow effect for meteor-like appearance
+    float coreBrightness = 1.0 - smoothstep(0.0, 0.3, dist);  // Bright core
+    float middleGlow = 1.0 - smoothstep(0.2, 0.7, dist);      // Middle glow
+    float outerGlow = 1.0 - smoothstep(0.5, 1.0, dist);       // Outer glow
     
-    // Adjust brightness and transparency based on raindrop size
-    vec3 finalColor = Color * Brightness * (0.7 + 0.6 * innerGlow);
-    float finalAlpha = alpha * (0.6 + 0.4 * innerGlow);
+    // Combine glow layers
+    float totalGlow = coreBrightness * 2.0 + middleGlow * 1.5 + outerGlow * 0.8;
     
-    // Add slight internal structure
-    float detail = 0.1 * sin(circCoord.x * 10.0) * sin(circCoord.y * 10.0);
-    finalColor += detail * innerGlow * Brightness;
+    // Enhanced color with bloom effect
+    vec3 finalColor = Color * Brightness * totalGlow;
     
-    FragColor = vec4(finalColor, finalAlpha);
+    // Add sparkle effect for nearby raindrops
+    float sparkle = 1.0 + 0.3 * sin(dist * 20.0) * (1.0 - dist);
+    finalColor *= sparkle;
+    
+    // Dynamic alpha for proper blending
+    float alpha = totalGlow * 0.9;
+    
+    // Boost brightness for better visibility
+    finalColor = clamp(finalColor * 1.5, 0.0, 3.0);
+    
+    FragColor = vec4(finalColor, alpha);
 }
 )";
 
@@ -2461,7 +2927,7 @@ void main() {
 }
 )";
 
-    // Fragment shader - water ripple (enhanced)
+    // Fragment shader - water ripple (enhanced with better visibility)
     const char* rippleFragmentShader = R"(
 #version 330 core
 out vec4 FragColor;
@@ -2472,25 +2938,35 @@ uniform vec3 rippleColor;
 uniform float opacity;
 
 void main() {
-    // Simulate water ripple flash and transparency changes
-    vec3 color = rippleColor;
-    
-    // Use fragment position to calculate ripple's radial position
-    vec3 center = vec3(0.0, 0.0, 0.0); // Ripple center in model space
+    // Calculate ripple's radial position
+    vec3 center = vec3(0.0, 0.0, 0.0);
     vec2 fromCenter = vec2(FragPos.x, FragPos.z);
     float dist = length(fromCenter);
     
-    // Add texture variation - make ripple more detailed
-    float detail = sin(dist * 20.0) * 0.1;
-    color += detail * rippleColor;
+    // Multi-frequency wave patterns for realistic ripple appearance
+    float mainWave = sin(dist * 25.0) * 0.8;
+    float detailWave = sin(dist * 50.0) * 0.3;
+    float fineDetail = sin(dist * 100.0) * 0.1;
     
-    // Smooth edges
-    float edgeFade = smoothstep(0.9, 1.0, dist);
-    float innerFade = smoothstep(0.0, 0.2, dist);
+    float wavePattern = mainWave + detailWave + fineDetail;
     
-    // Final color and transparency
-    color = color * (1.0 - edgeFade) * innerFade;
-    float alpha = opacity * (1.0 - edgeFade) * innerFade;
+    // Enhanced color with wave pattern
+    vec3 color = rippleColor * (1.0 + wavePattern * 0.5);
+    
+    // Improved edge handling for better visibility
+    float edgeFade = smoothstep(0.85, 1.0, dist);
+    float innerFade = smoothstep(0.0, 0.15, dist);
+    float ringIntensity = smoothstep(0.2, 0.8, abs(sin(dist * 30.0)));
+    
+    // Combine all factors for final intensity
+    float intensity = (1.0 - edgeFade) * innerFade * (0.6 + ringIntensity * 0.4);
+    
+    // Enhanced brightness for better visibility
+    color *= intensity * 2.0;
+    float alpha = opacity * intensity;
+    
+    // Boost alpha for better visibility against water
+    alpha = clamp(alpha * 1.5, 0.0, 1.0);
     
     FragColor = vec4(color, alpha);
 }
@@ -2531,6 +3007,51 @@ void main() {
     rippleFrag << rippleFragmentShader;
     rippleFrag.close();
     
+    // Lightning shaders - 新增闪电着色器
+    const char* lightningVertexShader = R"(
+#version 330 core
+layout (location = 0) in vec3 aPos;
+
+uniform mat4 model;
+uniform mat4 view;
+uniform mat4 projection;
+
+void main() {
+    gl_Position = projection * view * model * vec4(aPos, 1.0);
+}
+)";
+
+    const char* lightningFragmentShader = R"(
+#version 330 core
+out vec4 FragColor;
+
+uniform vec3 lightningColor;
+uniform float intensity;
+
+void main() {
+    // 闪电发光效果
+    vec3 finalColor = lightningColor * intensity;
+    
+    // 限制颜色范围防止过曝
+    finalColor = clamp(finalColor, 0.0, 2.0);
+    
+    // 添加闪烁效果
+    float flicker = 0.8 + 0.2 * fract(sin(gl_FragCoord.x * 12.9898 + gl_FragCoord.y * 78.233) * 43758.5453);
+    finalColor *= flicker;
+    
+    FragColor = vec4(finalColor, intensity);
+}
+)";
+
+    // Write lightning shaders
+    std::ofstream lightningVert("shaders/lightning.vert");
+    lightningVert << lightningVertexShader;
+    lightningVert.close();
+    
+    std::ofstream lightningFrag("shaders/lightning.frag");
+    lightningFrag << lightningFragmentShader;
+    lightningFrag.close();
+
     // Create texture directory
     if (!file_exists("textures")) {
         create_directory("textures");

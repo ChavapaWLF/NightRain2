@@ -1,0 +1,14 @@
+# Target labels
+ stb-populate
+# Source files and their labels
+E:/github/NightRain2/_deps/stb-subbuild/CMakeFiles/stb-populate
+E:/github/NightRain2/_deps/stb-subbuild/CMakeFiles/stb-populate.rule
+E:/github/NightRain2/_deps/stb-subbuild/CMakeFiles/stb-populate-complete.rule
+E:/github/NightRain2/_deps/stb-subbuild/stb-populate-prefix/src/stb-populate-stamp/stb-populate-build.rule
+E:/github/NightRain2/_deps/stb-subbuild/stb-populate-prefix/src/stb-populate-stamp/stb-populate-configure.rule
+E:/github/NightRain2/_deps/stb-subbuild/stb-populate-prefix/src/stb-populate-stamp/stb-populate-download.rule
+E:/github/NightRain2/_deps/stb-subbuild/stb-populate-prefix/src/stb-populate-stamp/stb-populate-install.rule
+E:/github/NightRain2/_deps/stb-subbuild/stb-populate-prefix/src/stb-populate-stamp/stb-populate-mkdir.rule
+E:/github/NightRain2/_deps/stb-subbuild/stb-populate-prefix/src/stb-populate-stamp/stb-populate-patch.rule
+E:/github/NightRain2/_deps/stb-subbuild/stb-populate-prefix/src/stb-populate-stamp/stb-populate-test.rule
+E:/github/NightRain2/_deps/stb-subbuild/stb-populate-prefix/src/stb-populate-stamp/stb-populate-update.rule
