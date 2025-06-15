@@ -1,4 +1,12 @@
-// main.cpp - 主程序入口
+/*
+ * 池塘夜降彩色雨（NightRain2）C++ OpenGL版
+ * 一个美丽的夜雨荷塘景色模拟程序
+ * 包含电闪雷鸣、动态天气效果
+ * 本项目是2025春季UCAS数据结构课程大作业（NightRain）的3D改进版，使用OpenGL实现
+ * 由于时间匆忙，本项目仍存在较多细节问题，欢迎大家提出建议和改进意见
+ * 作者：ChavapaWLF
+ * github: https://github.com/ChavapaWLF/NightRain2
+ */
 
 // 重要！！！SDL.h必须是第一个包含的头文件以确保WinMain定义正确
 #include <SDL2/SDL.h>
